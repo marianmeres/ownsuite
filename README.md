@@ -10,8 +10,8 @@ Client-side helper library for owner-scoped UIs. Generic domain managers with op
 
 Ownsuite gives front-end applications a uniform way to read, create, update and delete records from owner-scoped REST endpoints (typically `/me/*`). Each row is implicitly scoped to the authenticated subject by the server — the client never sets `owner_id`. The library pairs with:
 
-- **[`@marianmeres/collection`](https://jsr.io/@marianmeres/collection)** — the `ownerIdScope` route hook enforces owner-based filtering on the server.
-- **[`@marianmeres/stack-common`](https://jsr.io/@marianmeres/stack-common)** — the `ownsuiteOptions()` helper wires the server mount.
+- **@marianmeres/collection** — the `ownerIdScope` route hook enforces owner-based filtering on the server.
+- **@marianmeres/stack-common** — the `ownsuiteOptions()` helper wires the server mount.
 
 ## Features
 
