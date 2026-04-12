@@ -1,0 +1,75 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@marianmeres/clog@^3.15.3": "3.15.3",
+    "jsr:@marianmeres/npmbuild@^1.11.0": "1.11.0",
+    "jsr:@marianmeres/pubsub@^2.4.6": "2.4.6",
+    "jsr:@marianmeres/store@^2.4.4": "2.4.4",
+    "jsr:@std/assert@^1.0.19": "1.0.19",
+    "jsr:@std/collections@^1.1.5": "1.1.6",
+    "jsr:@std/fs@^1.0.22": "1.0.23",
+    "jsr:@std/fs@^1.0.23": "1.0.23",
+    "jsr:@std/internal@^1.0.12": "1.0.12",
+    "jsr:@std/path@^1.1.4": "1.1.4"
+  },
+  "jsr": {
+    "@marianmeres/clog@3.15.3": {
+      "integrity": "61a46a51ba7fce4813892d4713ab4872fc831edf381f73737b2f3334665f66a3"
+    },
+    "@marianmeres/npmbuild@1.11.0": {
+      "integrity": "924ed6df296aa4e3ffd55ad2c4b7904663824c5c30866c0c47fa815fd2c1a7d8",
+      "dependencies": [
+        "jsr:@std/collections",
+        "jsr:@std/fs@^1.0.22",
+        "jsr:@std/path"
+      ]
+    },
+    "@marianmeres/pubsub@2.4.6": {
+      "integrity": "949fc1f5e39a84642f5943dccb94fe14c58bfffa48649e8401f3d0607a7f2159"
+    },
+    "@marianmeres/store@2.4.4": {
+      "integrity": "32d44ed259d5a3af0bd95440a52ba27d612cb2b1d81695e8fc52f0a0538e0e89",
+      "dependencies": [
+        "jsr:@marianmeres/pubsub"
+      ]
+    },
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/collections@1.1.6": {
+      "integrity": "b458160ce65ea5ad35da05d0a5cbee4b583677c8b443a10d7beb0c4ac63f2baa"
+    },
+    "@std/fs@1.0.23": {
+      "integrity": "3ecbae4ce4fee03b180fa710caff36bb5adb66631c46a6460aaad49515565a37",
+      "dependencies": [
+        "jsr:@std/internal",
+        "jsr:@std/path"
+      ]
+    },
+    "@std/internal@1.0.12": {
+      "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
+    },
+    "@std/path@1.1.4": {
+      "integrity": "1d2d43f39efb1b42f0b1882a25486647cb851481862dc7313390b2bb044314b5",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@marianmeres/clog@^3.15.3",
+      "jsr:@marianmeres/collection-types@^1.36.0",
+      "jsr:@marianmeres/http-utils@^2.5.1",
+      "jsr:@marianmeres/npmbuild@^1.11.0",
+      "jsr:@marianmeres/pubsub@^2.4.6",
+      "jsr:@marianmeres/store@^2.4.4",
+      "jsr:@std/assert@^1.0.19",
+      "jsr:@std/fs@^1.0.23",
+      "jsr:@std/path@^1.1.4"
+    ]
+  }
+}
