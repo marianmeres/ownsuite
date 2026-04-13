@@ -420,4 +420,4 @@ export function createRestAdapter(stack: string, entity: string): OwnedCollectio
 }
 ```
 
-The [`@marianmeres/joy`](https://github.com/marianmeres/full-stack-app-template) admin SPA ships a reusable factory — `createOwnedCollectionAdapter()` in `src/routes/me/owned-collection-adapter.ts` — that implements exactly this shape.
+The `@marianmeres/joy` admin SPA ships a reusable factory — `createOwnedCollectionAdapter()` in `src/routes/me/owned-collection-adapter.ts` — that implements exactly this shape.
