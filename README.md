@@ -16,11 +16,14 @@ Ownsuite gives front-end applications a uniform way to read, create, update and 
 ## Features
 
 - **Generic domain managers** — register any owner-scoped collection by name; no hard-coded domain list
-- **Optimistic updates** — UI mutates immediately; the manager rolls back on server failure
+- **Optimistic updates** with per-row rollback — UI mutates immediately; failed ops revert just the affected row
+- **Race-safe concurrency** — mutations serialize; reads abort-supersede (a newer `refresh()` aborts an older one)
+- **AbortSignal plumbing** — every adapter call receives a per-operation signal, wired to `destroy()` and route-change cancellation
 - **Svelte-compatible stores** — every domain exposes a `subscribe()` method
 - **Adapter pattern** — plug in any HTTP/WebSocket/mock transport
 - **Event system** — subscribe to list fetches, row CRUD, and lifecycle transitions
-- **Mock adapter** — in-memory fixture for tests, with configurable failure injection
+- **Mock adapter** — in-memory fixture for tests, with configurable failure injection and latency
+- **Explicit lifecycle** — `suite.destroy()` aborts in-flight work and releases listeners cleanly
 
 ## Installation
 
@@ -65,6 +68,12 @@ suite.domain("orders").subscribe((s) => {
 await suite.domain("orders").create({ data: { total: 99 } });
 await suite.domain("orders").update(id, { data: { total: 120 } });
 await suite.domain("orders").delete(id);
+
+// 6. Detect silent boot failures
+if (suite.hasErrors()) console.warn("boot errors:", suite.errors());
+
+// 7. Clean up on teardown (SPA unmount, tenant switch, test harness)
+suite.destroy();
 ```
 
 ## Architecture at a glance
@@ -102,6 +111,16 @@ await suite.domain("notes").update("1", { data: { label: "new" } });
 ## API
 
 See [API.md](API.md) for complete API documentation.
+
+## Breaking changes in 2.0.0
+
+- `getOne()` no longer transitions the domain to `error` on failure — it returns `null` quietly.
+- `update(id, ...)` for an id absent from the cached list no longer prepends a phantom row — the server update is still applied server-side (event emitted), but the list stays unchanged. Call `refresh()` to surface it.
+- `createMockOwnedCollectionAdapter` rejects `create` payloads containing a client-supplied `model_id` by default (opt out with `rejectClientId: false`).
+- Rollback on failed `update`/`delete` is now per-row, not whole-list. Interleaved refresh results are preserved.
+- `reset()` now emits `domain:state:changed`.
+
+See [AGENTS.md](AGENTS.md) "Breaking changes in 2.0.0" for the full list and migration notes.
 
 ## License
 

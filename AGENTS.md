@@ -6,7 +6,7 @@ Machine-readable documentation for AI coding assistants.
 
 ```yaml
 name: "@marianmeres/ownsuite"
-version: "1.0.0"
+version: "2.0.0"
 type: "library"
 language: "typescript"
 runtime: "deno"
@@ -27,16 +27,39 @@ Pairs with:
 
 ```
 Ownsuite (orchestrator)
-├── #pubsub           (shared event bus)
+├── #pubsub           (shared event bus, cleared on destroy)
 ├── #context          (propagated to all domains on setContext)
 └── domains: Map<string, OwnedCollectionManager>
-      ├── store       (Svelte-compatible DomainStateWrapper<OwnedCollectionState<TRow>>)
-      ├── adapter     (OwnedCollectionAdapter)
-      ├── state machine: initializing → ready ↔ syncing → error
-      └── optimistic update + rollback on create/update/delete
+      ├── store           (Svelte-compatible DomainStateWrapper<OwnedCollectionState<TRow>>)
+      ├── adapter         (OwnedCollectionAdapter)
+      ├── state machine:  initializing → ready ↔ syncing → error
+      ├── optimistic update + per-row rollback on update/delete
+      ├── mutation chain  (serial create/update/delete)
+      ├── abort-supersede (initialize/refresh — newer call aborts older)
+      └── destroy()       (aborts in-flight ops, drops adapter)
 ```
 
 Each domain holds one list of rows. List operations replace the list wholesale; single-row ops mutate it in place so subscribers see stable references.
+
+### Concurrency model
+
+- **Mutations serialize** per manager via an internal promise chain. A
+  `create/update/delete` that starts while another is in-flight queues
+  behind it; callers still receive their own result through the returned
+  promise. Rejections on the chain are swallowed so they do not block
+  later mutations.
+- **Reads abort-supersede**: a new `initialize()` or `refresh()` aborts
+  any in-flight read on the same manager. The aborted call resolves
+  without writing to the store.
+- **onSuccess uses live data, not a captured snapshot**, so interleaving
+  reads and mutations never resurrect deleted rows or clobber writes.
+- **Rollback is per-row**: a failed `update` reverts just the updated
+  row; a failed `delete` re-inserts the deleted row at its original
+  position. An interleaved refresh that brought new rows is preserved.
+- **AbortSignal plumbing**: every adapter call receives
+  `ctx.signal: AbortSignal`. `reset()` and `destroy()` abort all active
+  signals. Adapters should forward the signal to `fetch()` — ignoring
+  it is safe but leaves abandoned requests running.
 
 ## Directory Structure
 
@@ -65,7 +88,9 @@ tests/
 ```typescript
 // Main
 export { Ownsuite, createOwnsuite } from "./ownsuite.ts";
-export type { OwnsuiteConfig, OwnsuiteDomainConfig } from "./ownsuite.ts";
+export type {
+	OwnsuiteConfig, OwnsuiteDomainConfig, SetContextOptions,
+} from "./ownsuite.ts";
 
 // Domain managers
 export { BaseDomainManager, OwnedCollectionManager } from "./domains/mod.ts";
@@ -102,15 +127,23 @@ Triggered by `initialize()`, `refresh()`, `create()`, `update()`, `delete()` on 
 
 1. **Client NEVER sets `owner_id`.** The server stamps it from the authenticated JWT via `@marianmeres/collection`'s `ownerIdExtractor`. Including `owner_id` in a create/update payload will be rejected (belt-and-braces) or silently ignored (immutability guarantee on update).
 
-2. **Ownership mismatches return 404, not 403.** When the server's `ownerIdScope` rejects access to a foreign row, it responds 404 to avoid leaking row existence. Adapter implementations must not treat 404 as a soft miss — they must throw so the manager transitions to `error` state for unexpected 404s on previously-visible rows.
+2. **Ownership mismatches return 404, not 403.** When the server's `ownerIdScope` rejects access to a foreign row, it responds 404 to avoid leaking row existence. For `list`/`refresh`, adapters must throw — the manager transitions to `error`. For `getOne`, a throw lands only in a returned `null` (see invariant 7).
 
-3. **Row ids default to `model_id`, fallback `id`.** Override via `getRowId` in `OwnsuiteDomainConfig` or `OwnedCollectionManagerOptions` when rows have a different key shape.
+3. **Row ids default to `model_id`, fallback `id`.** Override via `getRowId` in `OwnsuiteDomainConfig` or `OwnedCollectionManagerOptions` when rows have a different key shape. Empty string is rejected.
 
-4. **`initialize()` never rejects.** Per-domain errors land in that domain's `error` state; the top-level promise resolves. Callers that need failure detection should subscribe to `domain:error` events or inspect `manager.get().state`.
+4. **`initialize()` never rejects.** Per-domain errors land in that domain's `error` state; the top-level promise resolves. Use `suite.hasErrors()` / `suite.errors()` to detect failed boots, or subscribe to `domain:error`.
 
-5. **Optimistic updates roll back on failure.** `update` and `delete` mutate the list before the server call; on error the list is restored to its pre-call snapshot and the manager transitions to `error`. `create` does NOT optimistically insert (no client-assigned id) — it only inserts after the server returns.
+5. **Optimistic updates roll back per-row on failure.** `update` mutates the single target row; on error that row reverts to its pre-call value. `delete` removes the target row; on error it is re-inserted at its original position (unless another op has since re-added it). `create` does NOT optimistically insert. Rollback reads the *live* store so an interleaved `refresh()` that brought new rows is preserved.
 
-6. **`OwnsuiteContext.subjectId` is a hint, not authorization.** The server is authoritative. Setting it client-side has no security effect.
+6. **`OwnsuiteContext.subjectId` is a hint, not authorization.** The server is authoritative. Setting it client-side has no security effect. When subject changes, call `suite.setContext(ctx, { replace: true, refresh: true })` to clear stale per-subject caches.
+
+7. **`getOne()` does NOT transition the domain to `error`.** A failing single-row read (commonly a 404 for an un-owned row) returns `null` and emits nothing. The list state is preserved.
+
+8. **`update(id)` for a row absent from the cached list does NOT insert.** A missing index means the row was filtered out or never loaded — the successful server response is acknowledged (`own:row:updated` is emitted) but the list remains untouched. Call `refresh()` to surface the row.
+
+9. **Mutations serialize; reads abort-supersede.** Within a single manager, `create/update/delete` run one-at-a-time in call order. A newer `initialize/refresh` aborts an older one (the older call becomes a no-op).
+
+10. **`ctx.signal` is present on every adapter call.** Adapters should forward it to `fetch()`. Signals abort on `reset()`, `destroy()`, and read-supersede.
 
 ## Common Patterns
 
@@ -152,6 +185,29 @@ suite.on("domain:error",     (e) => {/* e.error */});
 suite.onAny(({ event, data }) => {/* wildcard envelope */});
 ```
 
+### Detecting boot failures
+
+```typescript
+await suite.initialize();
+if (suite.hasErrors()) {
+	const errs = suite.errors(); // { [domainName]: DomainError }
+	// route to error UI, log, retry, ...
+}
+```
+
+### Switching subject mid-session
+
+```typescript
+// Clears the previous subject's context keys and re-fetches every domain.
+suite.setContext({ subjectId: newId }, { replace: true, refresh: true });
+```
+
+### Cleanup
+
+```typescript
+suite.destroy(); // aborts in-flight requests, unsubscribes pubsub, drops adapters
+```
+
 ### Implementing a real adapter
 
 ```typescript
@@ -159,14 +215,14 @@ import type { OwnedCollectionAdapter } from "@marianmeres/ownsuite";
 import { HTTP_ERROR } from "@marianmeres/http-utils";
 
 const adapter: OwnedCollectionAdapter = {
-	async list(_ctx, query) {
+	async list(ctx, query) {
 		const url = new URL(`/api/shop/me/col/order/mod`, location.origin);
 		if (query) for (const [k, v] of Object.entries(query)) url.searchParams.set(k, String(v));
-		const res = await fetch(url);
+		const res = await fetch(url, { signal: ctx.signal }); // forward abort
 		if (!res.ok) throw new HTTP_ERROR.BadRequest(await res.text());
 		return await res.json(); // { data, meta }
 	},
-	// getOne, create, update, delete similarly
+	// getOne, create, update, delete similarly — always forward ctx.signal
 };
 ```
 
@@ -234,9 +290,13 @@ dev:
 ## Testing
 
 ```bash
-deno task test       # run all tests (10 tests)
+deno task test       # run all tests (26 tests across ownsuite.test.ts + concurrency.test.ts)
 deno task test:watch # watch mode
 ```
+
+`tests/concurrency.test.ts` covers the critical invariants: concurrent
+mutations, abort-supersede, getOne-not-setting-error, phantom-row
+prevention, destroy semantics, and the errors()/hasErrors() helpers.
 
 ## Build & Publish
 
@@ -276,6 +336,52 @@ Joy ships:
 - `src/admin/packages/joy/src/routes/me/owned-collection-adapter.ts` — reusable adapter factory.
 
 See the full-stack-app-template repo for the end-to-end example.
+
+## Breaking changes in 2.0.0
+
+The 1.x line has one open set of correctness bugs and a permissive API
+that leaked state into domain errors on non-list operations. 2.0.0 fixes
+those; the behaviors changed are:
+
+1. **`getOne()` no longer transitions the domain to `error`.** Previously
+   any adapter throw from `getOne` set `state: "error"` on the whole
+   domain, invalidating a healthy list view. Now it returns `null` and
+   logs at debug level. Callers relying on the error-state transition
+   must subscribe differently (wrap `getOne` or inspect adapter errors
+   directly).
+
+2. **`update(id, ...)` for an id absent from the cached list no longer
+   prepends a phantom row** on successful server response. The server
+   update is still applied (and `own:row:updated` emitted), but the list
+   stays as-is. Call `refresh()` to surface the row. Previously the row
+   was inserted at the top of the list.
+
+3. **`OwnsuiteContext.signal` is now populated by the manager on every
+   adapter call.** Adapters that declared `ctx: OwnsuiteContext` see no
+   compile break (the field was already allowed via the index
+   signature); adapters that want cancellation should now forward
+   `ctx.signal` to `fetch()`. Adapters that ignore it continue to work.
+
+4. **`createMockOwnedCollectionAdapter` rejects `create` payloads
+   containing `model_id`** by default. Tests that were relying on
+   passing a `model_id` at create time must either drop the field or
+   opt out via `rejectClientId: false` in the options. Rows with an
+   empty-string `model_id` in `seed` are also rejected.
+
+5. **Rollback is now per-row, not whole-list.** Behavioral semantics
+   are stricter: a failed `update` reverts only the updated row; a
+   failed `delete` re-inserts only the deleted row. If your app relied
+   on the whole-list-restore side effect (e.g., to drop rows added by
+   a concurrent refresh that raced with a failing mutation), note this
+   subtle shift.
+
+6. **`reset()` now emits `domain:state:changed`** for each domain that
+   transitions out of a non-initializing state. Subscribers that count
+   events may see more of them.
+
+Non-breaking additions: `suite.destroy()`, `suite.errors()`,
+`suite.hasErrors()`, `suite.setContext(ctx, { replace, refresh })`,
+`manager.isDestroyed`, `manager.replaceContext(ctx)`.
 
 ## Differences from `@marianmeres/ecsuite`
 

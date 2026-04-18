@@ -1,36 +1,59 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@marianmeres/clog@^3.15.3": "3.15.3",
-    "jsr:@marianmeres/npmbuild@^1.11.0": "1.11.0",
+    "jsr:@marianmeres/batch@^1.2.0": "1.2.0",
+    "jsr:@marianmeres/clog@^3.15.3": "3.17.1",
+    "jsr:@marianmeres/clog@^3.17.1": "3.17.1",
+    "jsr:@marianmeres/collection-types@^1.37.0": "1.37.0",
+    "jsr:@marianmeres/http-utils@^2.6.0": "2.6.0",
+    "jsr:@marianmeres/npmbuild@^1.14.0": "1.14.0",
+    "jsr:@marianmeres/pubsub@3": "3.0.0",
     "jsr:@marianmeres/pubsub@^2.4.6": "2.4.6",
-    "jsr:@marianmeres/store@^2.4.4": "2.4.4",
+    "jsr:@marianmeres/store@^3.0.1": "3.0.1",
     "jsr:@std/assert@^1.0.19": "1.0.19",
-    "jsr:@std/collections@^1.1.5": "1.1.6",
-    "jsr:@std/fs@^1.0.22": "1.0.23",
+    "jsr:@std/collections@^1.1.6": "1.1.6",
     "jsr:@std/fs@^1.0.23": "1.0.23",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@^1.1.4": "1.1.4"
   },
   "jsr": {
-    "@marianmeres/clog@3.15.3": {
-      "integrity": "61a46a51ba7fce4813892d4713ab4872fc831edf381f73737b2f3334665f66a3"
+    "@marianmeres/batch@1.2.0": {
+      "integrity": "7cafd9be55f1f0a1a9f7aaab205c7d2804d1a904bbcc33528e2fda74020d5ceb",
+      "dependencies": [
+        "jsr:@marianmeres/clog@^3.15.3",
+        "jsr:@marianmeres/pubsub@^2.4.6"
+      ]
     },
-    "@marianmeres/npmbuild@1.11.0": {
-      "integrity": "924ed6df296aa4e3ffd55ad2c4b7904663824c5c30866c0c47fa815fd2c1a7d8",
+    "@marianmeres/clog@3.17.1": {
+      "integrity": "f899209530ddc2e79f84188c740171cde07e9bbfc30c4d3cff606aa126ebe29a",
+      "dependencies": [
+        "jsr:@marianmeres/batch"
+      ]
+    },
+    "@marianmeres/collection-types@1.37.0": {
+      "integrity": "bea0274667597dd58b6d428d4545b072608eded572bafdd758a1447f8ab6d684"
+    },
+    "@marianmeres/http-utils@2.6.0": {
+      "integrity": "30a10d5be6a631c7fb711121ca46d823b5f2fb7d63e0dbacf2a9b85dbb418ef4"
+    },
+    "@marianmeres/npmbuild@1.14.0": {
+      "integrity": "2101b17e423cfa9a26bbfe251c5c40641b36d5a06500f3d6ac7f6dc8c2579a7d",
       "dependencies": [
         "jsr:@std/collections",
-        "jsr:@std/fs@^1.0.22",
+        "jsr:@std/fs",
         "jsr:@std/path"
       ]
     },
     "@marianmeres/pubsub@2.4.6": {
       "integrity": "949fc1f5e39a84642f5943dccb94fe14c58bfffa48649e8401f3d0607a7f2159"
     },
-    "@marianmeres/store@2.4.4": {
-      "integrity": "32d44ed259d5a3af0bd95440a52ba27d612cb2b1d81695e8fc52f0a0538e0e89",
+    "@marianmeres/pubsub@3.0.0": {
+      "integrity": "9bc40e60362801663fb23e0c00a353abec7684840b6bea410facba09c083677b"
+    },
+    "@marianmeres/store@3.0.1": {
+      "integrity": "be72d3fb0308dd2909ad8306b3477f51d218ca65975548704f8cb853222fb396",
       "dependencies": [
-        "jsr:@marianmeres/pubsub"
+        "jsr:@marianmeres/pubsub@3"
       ]
     },
     "@std/assert@1.0.19": {
@@ -61,12 +84,12 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@marianmeres/clog@^3.15.3",
-      "jsr:@marianmeres/collection-types@^1.36.0",
-      "jsr:@marianmeres/http-utils@^2.5.1",
-      "jsr:@marianmeres/npmbuild@^1.11.0",
-      "jsr:@marianmeres/pubsub@^2.4.6",
-      "jsr:@marianmeres/store@^2.4.4",
+      "jsr:@marianmeres/clog@^3.17.1",
+      "jsr:@marianmeres/collection-types@^1.37.0",
+      "jsr:@marianmeres/http-utils@^2.6.0",
+      "jsr:@marianmeres/npmbuild@^1.14.0",
+      "jsr:@marianmeres/pubsub@3",
+      "jsr:@marianmeres/store@^3.0.1",
       "jsr:@std/assert@^1.0.19",
       "jsr:@std/fs@^1.0.23",
       "jsr:@std/path@^1.1.4"

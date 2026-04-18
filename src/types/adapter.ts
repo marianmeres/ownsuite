@@ -38,6 +38,10 @@ export interface OwnedRowResult<TRow> {
  *   client. The client can only act on rows it owns.
  * - Errors should throw (ideally `HTTP_ERROR` from `@marianmeres/http-utils`);
  *   the manager handles rollback and error state.
+ * - `ctx.signal` is populated by the manager on every call — forward it to
+ *   `fetch(url, { signal: ctx.signal })` to support route-change and
+ *   destroy cancellation. Ignoring the signal is safe but leaves abandoned
+ *   requests running to completion (wasted bandwidth; no state corruption).
  */
 export interface OwnedCollectionAdapter<TRow, TCreate = unknown, TUpdate = unknown> {
 	/** List rows owned by the current subject. Query params are implementation-defined. */

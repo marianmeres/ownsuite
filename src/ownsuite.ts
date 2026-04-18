@@ -18,7 +18,7 @@ import {
 	type Subscriber,
 	type Unsubscriber,
 } from "@marianmeres/pubsub";
-import type { OwnsuiteContext } from "./types/state.ts";
+import type { DomainError, OwnsuiteContext } from "./types/state.ts";
 import type { OwnedCollectionAdapter } from "./types/adapter.ts";
 import type { OwnsuiteEventType } from "./types/events.ts";
 import { OwnedCollectionManager } from "./domains/owned-collection.ts";
@@ -42,6 +42,14 @@ export interface OwnsuiteConfig {
 	domains?: Record<string, OwnsuiteDomainConfig>;
 	/** Auto-initialize all registered domains on creation (default: false). */
 	autoInitialize?: boolean;
+}
+
+/** Options for {@link Ownsuite.setContext}. */
+export interface SetContextOptions {
+	/** If true, replace the context entirely instead of merging. Default: false (merge). */
+	replace?: boolean;
+	/** If true, fire `refresh()` on every domain after the context change. Default: false. */
+	refresh?: boolean;
 }
 
 /**
@@ -68,6 +76,7 @@ export class Ownsuite {
 	#context: OwnsuiteContext;
 	// deno-lint-ignore no-explicit-any
 	readonly #domains = new Map<string, OwnedCollectionManager<any, any, any>>();
+	#destroyed = false;
 
 	constructor(config: OwnsuiteConfig = {}) {
 		this.#pubsub = createPubSub();
@@ -78,9 +87,16 @@ export class Ownsuite {
 		}
 
 		if (config.autoInitialize) {
-			// fire-and-forget; consumers who care should await initialize() explicitly
-			this.initialize().catch((e) => this.#clog.error("autoInitialize", e));
+			// `initialize()` is non-rejecting by contract; per-domain errors
+			// land in that domain's error state. See `hasErrors()` / `errors()`
+			// to detect them after boot.
+			void this.initialize();
 		}
+	}
+
+	/** True after `destroy()` has been called. */
+	get isDestroyed(): boolean {
+		return this.#destroyed;
 	}
 
 	/** Register a new domain after construction. */
@@ -89,6 +105,9 @@ export class Ownsuite {
 		name: string,
 		cfg: OwnsuiteDomainConfig<TRow, TCreate, TUpdate>,
 	): OwnedCollectionManager<TRow, TCreate, TUpdate> {
+		if (this.#destroyed) {
+			throw new Error("Ownsuite: cannot register on a destroyed suite");
+		}
 		if (this.#domains.has(name)) {
 			throw new Error(`Ownsuite: domain "${name}" already registered`);
 		}
@@ -125,19 +144,51 @@ export class Ownsuite {
 	/**
 	 * Initialize all registered domains (or a subset). Runs in parallel.
 	 * Individual domain errors land in that domain's error state — they
-	 * do not reject the overall promise.
+	 * do not reject the overall promise. Use `hasErrors()` / `errors()` to
+	 * inspect the result. Unknown domain names in `names` are logged and
+	 * skipped.
 	 */
 	async initialize(names?: string[]): Promise<void> {
+		if (this.#destroyed) return;
 		const targets = names ?? this.domainNames();
 		await Promise.all(
-			targets.map((n) => this.#domains.get(n)?.initialize() ?? Promise.resolve()),
+			targets.map((n) => {
+				const m = this.#domains.get(n);
+				if (!m) {
+					this.#clog.warn(`initialize: unknown domain "${n}", skipping`);
+					return Promise.resolve();
+				}
+				return m.initialize();
+			}),
 		);
 	}
 
-	/** Update shared context and propagate to all domain managers. */
-	setContext(ctx: OwnsuiteContext): void {
-		this.#context = { ...this.#context, ...ctx };
-		for (const m of this.#domains.values()) m.setContext(this.#context);
+	/**
+	 * Update shared context and propagate to every domain manager.
+	 *
+	 * - `options.replace: true` — replace the context wholesale (no merge).
+	 * - `options.refresh: true` — fire-and-forget `refresh()` on every
+	 *   domain after the context change (so stale per-subject caches don't
+	 *   linger when, e.g., `subjectId` changes).
+	 */
+	setContext(ctx: OwnsuiteContext, options: SetContextOptions = {}): void {
+		if (this.#destroyed) return;
+		this.#context = options.replace
+			? { ...ctx }
+			: { ...this.#context, ...ctx };
+		for (const m of this.#domains.values()) {
+			if (options.replace) m.replaceContext(this.#context);
+			else m.setContext(this.#context);
+		}
+		if (options.refresh) {
+			for (const m of this.#domains.values()) {
+				// Fire-and-forget. refresh() is non-rejecting (lands in error state
+				// on failure), but we defensively swallow anything unexpected.
+				void m.refresh().catch((e) =>
+					this.#clog.error("setContext: refresh failed", e)
+				);
+			}
+		}
 	}
 
 	getContext(): OwnsuiteContext {
@@ -157,9 +208,47 @@ export class Ownsuite {
 		return this.#pubsub.subscribe("*", subscriber);
 	}
 
-	/** Reset all domains to initializing state. */
+	/** Map of currently-errored domains to their error, empty if none. */
+	errors(): Record<string, DomainError> {
+		const out: Record<string, DomainError> = {};
+		for (const [name, m] of this.#domains) {
+			const s = m.get();
+			if (s.state === "error" && s.error) out[name] = s.error;
+		}
+		return out;
+	}
+
+	/** True if any domain is currently in `error` state. */
+	hasErrors(): boolean {
+		for (const m of this.#domains.values()) {
+			if (m.get().state === "error") return true;
+		}
+		return false;
+	}
+
+	/** Reset all domains to initializing state. Aborts in-flight ops. */
 	reset(): void {
 		for (const m of this.#domains.values()) m.reset();
+	}
+
+	/**
+	 * Dispose of the suite: destroys every registered domain (aborting
+	 * in-flight requests), drops the domain map, and unsubscribes every
+	 * listener this suite owns on its pubsub. Safe to call multiple times.
+	 *
+	 * Note: if the pubsub was constructed internally (the default), all
+	 * subscribers are unsubscribed. If consumers passed an external pubsub
+	 * to managers directly, that shared pubsub is not cleared — they own it.
+	 */
+	destroy(): void {
+		if (this.#destroyed) return;
+		this.#destroyed = true;
+		for (const m of this.#domains.values()) m.destroy();
+		this.#domains.clear();
+		// Our internal pubsub: clear all subscribers. Best-effort — if a custom
+		// pubsub implementation doesn't expose `unsubscribeAll`, skip it.
+		const ps = this.#pubsub as unknown as { unsubscribeAll?: () => void };
+		ps.unsubscribeAll?.();
 	}
 }
 

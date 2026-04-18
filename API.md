@@ -98,16 +98,43 @@ Initialize all registered domains (or a subset). Runs in parallel. Individual do
 
 **Returns:** `Promise<void>`
 
-#### `suite.setContext(ctx)`
+#### `suite.setContext(ctx, options?)`
 
-Merge `ctx` into the shared context and propagate to every registered domain manager.
+Update the shared context and propagate to every registered domain manager.
 
 **Parameters:**
 - `ctx` (`OwnsuiteContext`)
+- `options` (`SetContextOptions`, optional)
+  - `options.replace` (`boolean`, default `false`) — replace the context wholesale instead of merging. Use this when the subject changes and previous per-subject keys must not leak into adapter calls.
+  - `options.refresh` (`boolean`, default `false`) — fire-and-forget `refresh()` on every domain after the context change. Recommended when `subjectId` changes so stale per-subject caches are cleared.
+
+**Example:**
+```typescript
+// Subject change: drop old context + re-fetch every domain
+suite.setContext({ subjectId: newId }, { replace: true, refresh: true });
+```
 
 #### `suite.getContext(): OwnsuiteContext`
 
 Snapshot of current shared context.
+
+#### `suite.errors(): Record<string, DomainError>`
+
+Map of currently-errored domains to their `DomainError`. Empty if none are in error state. Use after `initialize()` to detect silent boot failures.
+
+#### `suite.hasErrors(): boolean`
+
+True if any domain is currently in `error` state.
+
+#### `suite.destroy()`
+
+Dispose of the suite: destroys every registered domain (which aborts in-flight adapter requests), clears the domain map, and unsubscribes every listener attached to the internal pubsub. Safe to call multiple times.
+
+Subsequent method calls are best-effort no-ops (e.g., `initialize()` returns immediately, `setContext()` ignores the call). `registerDomain()` throws after destroy.
+
+#### `suite.isDestroyed: boolean`
+
+True after `destroy()` has been called.
 
 #### `suite.on(type, subscriber)`
 
@@ -177,7 +204,9 @@ Re-fetch the list. Same as `initialize` but re-entrant; accepts an adapter-speci
 
 #### `manager.getOne(id): Promise<TRow | null>`
 
-Fetch a single row by id. Does **not** mutate the list. Returns `null` on error and transitions the manager to `error` state.
+Fetch a single row by id. Does **not** mutate the list and does **not** transition the domain to `error` on failure — a 404 for an un-owned row or a network blip on a read shouldn't invalidate a healthy list view. Returns `null` on any failure (including missing adapter). Emits `own:row:fetched` on success.
+
+Callers that need error detail should wrap this method and inspect the adapter error themselves.
 
 #### `manager.create(data): Promise<TRow | null>`
 
@@ -190,15 +219,19 @@ Create a new row. On success, prepends the server-returned row to the list. On f
 
 #### `manager.update(id, data): Promise<TRow | null>`
 
-Update a row. Optimistically merges `data` into the existing row; on server failure the list is rolled back to its pre-call state. On success, the server-returned row replaces the optimistic one.
+Update a row. Optimistically merges `data` into the existing row; on server failure the single row reverts to its pre-call value (other rows are untouched — including any added by an interleaved `refresh()`). On success, the server-returned row replaces the optimistic one.
+
+If `id` is **not** in the current cached list (filtered out by an active query, or not loaded), the optimistic step is a no-op AND the successful server response is **not** inserted — call `refresh()` if you want the row to appear. The `own:row:updated` event is emitted regardless.
 
 **Parameters:**
 - `id` (`string`)
 - `data` (`TUpdate`)
 
+Mutations serialize per-manager — a `create/update/delete` that starts while another is in-flight queues behind it.
+
 #### `manager.delete(id): Promise<boolean>`
 
-Delete a row. Optimistically removes it from the list; on server failure the list is rolled back.
+Delete a row. Optimistically removes it from the list; on server failure the single row is re-inserted at its original position (unless another op has since re-added it).
 
 **Returns:** `true` on success, `false` on failure.
 
@@ -214,13 +247,21 @@ Find a row by id in the current list without hitting the server.
 
 Swap or inspect the adapter at runtime.
 
-#### `manager.setContext(ctx)` / `manager.getContext()`
+#### `manager.setContext(ctx)` / `manager.replaceContext(ctx)` / `manager.getContext()`
 
-Per-manager context. `Ownsuite.setContext()` propagates to every manager.
+Per-manager context. `setContext` merges into the existing context; `replaceContext` replaces it wholesale. `Ownsuite.setContext()` propagates to every manager (with the same `{ replace }` option).
 
 #### `manager.reset()`
 
-Reset to `initializing` state.
+Reset to `initializing` state. Aborts any in-flight reads or mutations (their completions become no-ops) and emits `domain:state:changed`.
+
+#### `manager.destroy()`
+
+Abort in-flight operations, drop the adapter reference, and mark the manager as destroyed. Subsequent method calls are best-effort no-ops. Usually invoked via `Ownsuite.destroy()`, but safe to call directly.
+
+#### `manager.isDestroyed: boolean`
+
+True after `destroy()` has been called.
 
 ---
 
@@ -255,16 +296,26 @@ interface OwnsuiteDomainConfig<TRow, TCreate, TUpdate> {
 }
 ```
 
+### `SetContextOptions`
+
+```typescript
+interface SetContextOptions {
+	replace?: boolean;   // default: false — merge into existing context
+	refresh?: boolean;   // default: false — fire refresh() on every domain
+}
+```
+
 ### `OwnsuiteContext`
 
 ```typescript
 interface OwnsuiteContext {
 	subjectId?: string;
+	signal?: AbortSignal;  // manager-injected, per-call
 	[key: string]: unknown;
 }
 ```
 
-Context passed to adapters. **`subjectId` is a hint only** — the server authoritatively resolves the owner from the authenticated JWT. The context object is the extension point for passing host-app data (correlation ids, feature flags, tenants) through adapter calls.
+Context passed to adapters. **`subjectId` is a hint only** — the server authoritatively resolves the owner from the authenticated JWT. **`signal` is injected by the manager** on every call; adapters should forward it to `fetch()` for cancellation on `reset()`/`destroy()`/read-supersede. The context object is also the extension point for passing host-app data (correlation ids, feature flags, tenants) through adapter calls.
 
 ### `OwnedCollectionAdapter<TRow, TCreate, TUpdate>`
 
@@ -383,8 +434,12 @@ interface MockAdapterOptions<TRow> {
 	failOn?: { list?: boolean; getOne?: boolean; create?: boolean; update?: boolean; delete?: boolean };
 	getRowId?: (row: TRow) => string;
 	newId?: () => string;
+	/** Reject create payloads containing `model_id` (default: true). */
+	rejectClientId?: boolean;
 }
 ```
+
+The mock adapter forwards `ctx.signal` — `delayMs` waits can be aborted mid-sleep so tests that assert on abort-supersede semantics run deterministically.
 
 ---
 
@@ -393,27 +448,33 @@ interface MockAdapterOptions<TRow> {
 Point the adapter at your server's owner-scoped mount (typically `/api/<stack>/me/col/<entity>/...`). The server is responsible for `owner_id` enforcement — the client only talks to `/me/*`.
 
 ```typescript
-import type { OwnedCollectionAdapter } from "@marianmeres/ownsuite";
+import type { OwnedCollectionAdapter, OwnsuiteContext } from "@marianmeres/ownsuite";
 import { HTTP_ERROR } from "@marianmeres/http-utils";
 
 export function createRestAdapter(stack: string, entity: string): OwnedCollectionAdapter {
 	const base = `/api/${stack}/me/col/${entity}`;
-	const json = async <T>(method: string, url: string, body?: unknown): Promise<T> => {
+	const json = async <T>(
+		method: string,
+		url: string,
+		ctx: OwnsuiteContext,
+		body?: unknown,
+	): Promise<T> => {
 		const res = await fetch(url, {
 			method,
 			headers: { "content-type": "application/json" },
 			body: body === undefined ? undefined : JSON.stringify(body),
+			signal: ctx.signal, // forward manager-injected abort signal
 		});
 		if (!res.ok) throw new HTTP_ERROR.BadRequest(await res.text());
 		return await res.json();
 	};
 	return {
-		list: (_ctx) => json("GET", `${base}/mod`),
-		getOne: (id, _ctx) => json("GET", `${base}/mod/${id}`),
-		create: (data, _ctx) => json("POST", `${base}/mod`, data),
-		update: (id, data, _ctx) => json("PUT", `${base}/mod/${id}`, data),
-		delete: async (id, _ctx) => {
-			await json("DELETE", `${base}/mod/${id}`);
+		list: (ctx) => json("GET", `${base}/mod`, ctx),
+		getOne: (id, ctx) => json("GET", `${base}/mod/${id}`, ctx),
+		create: (data, ctx) => json("POST", `${base}/mod`, ctx, data),
+		update: (id, data, ctx) => json("PUT", `${base}/mod/${id}`, ctx, data),
+		delete: async (id, ctx) => {
+			await json("DELETE", `${base}/mod/${id}`, ctx);
 			return true;
 		},
 	};
