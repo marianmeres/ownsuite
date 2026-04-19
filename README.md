@@ -24,6 +24,71 @@ Ownsuite gives front-end applications a uniform way to read, create, update and 
 - **Event system** — subscribe to list fetches, row CRUD, and lifecycle transitions
 - **Mock adapter** — in-memory fixture for tests, with configurable failure injection and latency
 - **Explicit lifecycle** — `suite.destroy()` aborts in-flight work and releases listeners cleanly
+- **Account lifecycle (opt-in)** — `suite.auth` / `suite.session` / `suite.profile` for register / login / OAuth / verify / logout / profile edit / delete account, wired to pair with [`@marianmeres/stack-account`](../stack-account/) via the bundled default adapters
+
+## Authentication (optional)
+
+Pass an `AuthAdapter` to `createOwnsuite` to attach the account-lifecycle managers. The default adapters target the [`@marianmeres/stack-account`](../stack-account/) REST surface; apps with custom routes can write their own against the `AuthAdapter` / `ProfileAdapter` interfaces exported from this package.
+
+```typescript
+import {
+  createOwnsuite,
+  createStackAccountAuthAdapter,
+  createStackAccountProfileAdapter,
+} from "@marianmeres/ownsuite";
+
+const suite = createOwnsuite({
+  adapters: {
+    auth: createStackAccountAuthAdapter({ baseUrl: "/api/account" }),
+    profile: createStackAccountProfileAdapter({ baseUrl: "/api/account" }),
+  },
+  session: { storage: "local", storageKey: "myapp:session" },
+  // Existing owner-scoped domains continue to work — their ctx.jwt is
+  // populated automatically from the session and they re-initialize on
+  // every login / logout.
+  domains: {
+    orders: { adapter: ordersAdapter },
+  },
+});
+
+// Observable session — UI subscribes to this for logged-in state.
+suite.session!.subscribe(({ status, subject }) => {
+  if (status === "authenticated") console.log("hi", subject!.email);
+  if (status === "unverified")   console.log("check your inbox");
+  if (status === "anonymous")    console.log("signed out");
+});
+
+// Register → server requires email verification (default gate in stack-account)
+await suite.auth!.register({
+  email: "alice@example.com",
+  password: "hunter2hunter2",
+  password_confirm: "hunter2hunter2",
+});
+// suite.session!.get().status === "unverified"
+
+// After the user clicks the email link and the server flips isVerified:
+await suite.auth!.login({ email: "alice@example.com", password: "hunter2hunter2" });
+// suite.session!.get().status === "authenticated"
+// Every registered owner-scoped domain is re-initialized with the new JWT.
+
+// OAuth popup flow — resolves when the callback page postMessages back
+await suite.auth!.initiateOAuth("google", { action: "login" });
+
+// Profile edit — changing email resets isVerified server-side and dispatches
+// a new verification email. Session subject is patched in place.
+await suite.profile!.update({
+  email: "renamed@example.com",
+  current_password: "hunter2hunter2",
+});
+
+// Logout — revokes JWT server-side (via stack-account's jti deletion) and
+// clears local session storage. Owner-scoped domains reset to initializing.
+await suite.auth!.logout();
+```
+
+Session state is persisted through a pluggable `SessionStorage` backend (`"local"` / `"session"` / `"memory"` / custom object with `get`/`set`/`del`). Expired stored sessions are discarded on construction so a reload after the JWT lapses starts anonymous.
+
+Tests can use the in-memory mock adapters (`createMockAuthAdapter`, `createMockProfileAdapter`, `createMockAuthStore`, `verifyMockAccount`) and the injectable popup host for deterministic OAuth dances.
 
 ## Installation
 

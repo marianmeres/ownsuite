@@ -19,9 +19,12 @@ entry: "./src/mod.ts"
 
 Client-side helper library for **owner-scoped** UIs. Generic domain managers for CRUD over collections where every row is implicitly filtered to the authenticated subject by the server. Mirrors the shape of `@marianmeres/ecsuite` but applies to arbitrary owner-scoped collections instead of hard-coded e-commerce domains.
 
+**Also (opt-in)** provides the blessed account-lifecycle surface for apps built on `@marianmeres/stack-account`: `suite.auth` (register / login / logout / OAuth init / password reset / delete account), `suite.profile` (`/me` CRUD + OAuth link list), `suite.session` (reactive JWT + subject, pluggable storage). Pass an `AuthAdapter` to `createOwnsuite({ adapters: { auth } })` to attach them.
+
 Pairs with:
 - **`@marianmeres/collection`** — `ownerIdScope` route hook (read-side owner enforcement).
 - **`@marianmeres/stack-common`** — `ownsuiteOptions()` server helper for mounting `/me/*` routes.
+- **`@marianmeres/stack-account`** — default adapters (`createStackAccountAuthAdapter`, `createStackAccountProfileAdapter`) target its REST surface.
 
 ## Architecture
 
@@ -110,7 +113,64 @@ export type {
 // Mock adapter (for tests)
 export { createMockOwnedCollectionAdapter } from "./adapters/mod.ts";
 export type { MockAdapterOptions } from "./adapters/mod.ts";
+
+// Account lifecycle (optional — attached when adapters.auth is supplied)
+export { SessionManager, AuthManager, ProfileManager } from "./domains/mod.ts";
+export type {
+	AuthAdapter, ProfileAdapter, AuthTokenResult, ProfileResult,
+	SessionState, SessionSubject, SessionStatus,
+	SessionStorage, SessionStorageType,
+	OAuthConnection, OAuthProvider, OAuthInitOptions, OAuthAction,
+} from "./types/mod.ts";
+
+// OAuth popup helper
+export { openOAuthPopup } from "./oauth/popup.ts";
+export type {
+	OAuthPopupMessage, OAuthPopupLoginMessage, OAuthPopupLinkMessage,
+	OpenOAuthPopupOptions, PopupWindowHost, PopupWindowHandle,
+} from "./oauth/popup.ts";
+
+// Default stack-account adapters
+export {
+	createStackAccountAuthAdapter,
+	createStackAccountProfileAdapter,
+} from "./adapters/mod.ts";
+export type { StackAccountAdapterOptions } from "./adapters/mod.ts";
+
+// Mock auth adapter (for tests)
+export {
+	createMockAuthAdapter, createMockProfileAdapter,
+	createMockAuthStore, verifyMockAccount,
+} from "./adapters/mod.ts";
+export type { MockAuthStore } from "./adapters/mod.ts";
 ```
+
+## Account lifecycle (optional)
+
+When `adapters.auth` is supplied, `createOwnsuite` instantiates three extra managers and attaches them as readonly suite properties:
+
+- **`suite.session: SessionManager`** — reactive `{ status, subject, jwt, expiresAt }` persisted via pluggable `SessionStorage` (`"local"` / `"session"` / `"memory"` / custom object). Hydrates on construction; discards expired sessions. Exposes `subscribe` (Svelte-compatible), `get()`, and state-mutation methods (`setAuthenticated`, `setUnverified`, `clear`, `patchSubject`). Writes are driven by `AuthManager`, not consumers directly.
+
+- **`suite.auth: AuthManager`** — verbs only, no state. `register` / `login` / `logout` / `resendVerification` / `requestPasswordReset` / `changePassword` / `deleteAccount` / `initiateOAuth` (`mode: "popup" | "redirect"`) / `handleOAuthCallback` (redirect mode). Each call pipes the result into the session and fires an `onIdentityChanged` hook that resets + re-initializes every owner-scoped domain with the fresh context.
+
+- **`suite.profile: ProfileManager`** — singleton (one-row) `/me` CRUD. `fetch` / `update` / `listOAuth` / `unlinkOAuth`. Every successful fetch/update patches the session subject in place so consumers reading `suite.session` see email / roles / verification / connections without a second fetch. Update emits `profile:updated`.
+
+The session subscribes to its own store and propagates `ctx.jwt` + `ctx.subjectId` into every registered owner-scoped domain automatically — authentication changes propagate without any manual wiring from consumers.
+
+### Auth events (emitted on the shared pubsub)
+
+- `auth:register` — `{ email, requiresVerification }`
+- `auth:login` — `{ email }`
+- `auth:logout` — `{ subjectId? }`
+- `auth:session:changed` — `{ session: SessionState }`
+- `auth:verification:required` — `{ email }` (fired when `status` transitions to `"unverified"`)
+- `profile:updated` — `{ email }`
+- `oauth:linked` — `{ connection }`
+- `oauth:unlinked` — `{ provider }`
+
+### OAuth popup protocol
+
+`suite.auth.initiateOAuth(provider, opts)` with `mode: "popup"` opens a popup at the server's `/oauth/{provider}/init` URL and awaits a `postMessage` from the server's callback page (`{ type: "oauth_login_success" | "oauth_link_success" | "oauth_error", ... }`). For `mode: "redirect"` the top window navigates and the app's callback page calls `suite.auth.handleOAuthCallback()` on mount.
 
 ## State Machine
 
