@@ -30,3 +30,4 @@ export * from "./ownsuite.ts";
 export * from "./domains/mod.ts";
 export * from "./types/mod.ts";
 export * from "./adapters/mod.ts";
+export * from "./oauth/popup.ts";

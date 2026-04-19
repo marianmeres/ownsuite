@@ -5,6 +5,11 @@
  */
 
 import type { DomainError, DomainState } from "./state.ts";
+import type {
+	OAuthConnection,
+	OAuthProvider,
+	SessionState,
+} from "./auth.ts";
 
 /**
  * Domain identifier in ownsuite is an arbitrary string (the collection name
@@ -22,7 +27,16 @@ export type OwnsuiteEventType =
 	| "own:row:fetched"
 	| "own:row:created"
 	| "own:row:updated"
-	| "own:row:deleted";
+	| "own:row:deleted"
+	// Auth / profile / session lifecycle — emitted by the new managers.
+	| "auth:register"
+	| "auth:login"
+	| "auth:logout"
+	| "auth:session:changed"
+	| "auth:verification:required"
+	| "profile:updated"
+	| "oauth:linked"
+	| "oauth:unlinked";
 
 /** Base event data. */
 export interface OwnsuiteEventBase {
@@ -80,6 +94,55 @@ export interface RowDeletedEvent extends OwnsuiteEventBase {
 	rowId: string;
 }
 
+// ─────────────────────── auth / profile / session events ──────────────────
+
+export interface AuthEventBase {
+	timestamp: number;
+}
+
+export interface AuthRegisterEvent extends AuthEventBase {
+	type: "auth:register";
+	email: string;
+	/** True when the server requires email verification (no auto-login). */
+	requiresVerification: boolean;
+}
+
+export interface AuthLoginEvent extends AuthEventBase {
+	type: "auth:login";
+	email: string;
+}
+
+export interface AuthLogoutEvent extends AuthEventBase {
+	type: "auth:logout";
+	/** Id of the subject that just logged out, if known. */
+	subjectId?: string;
+}
+
+export interface AuthSessionChangedEvent extends AuthEventBase {
+	type: "auth:session:changed";
+	session: SessionState;
+}
+
+export interface AuthVerificationRequiredEvent extends AuthEventBase {
+	type: "auth:verification:required";
+	email: string;
+}
+
+export interface ProfileUpdatedEvent extends AuthEventBase {
+	type: "profile:updated";
+	email: string;
+}
+
+export interface OAuthLinkedEvent extends AuthEventBase {
+	type: "oauth:linked";
+	connection: OAuthConnection;
+}
+
+export interface OAuthUnlinkedEvent extends AuthEventBase {
+	type: "oauth:unlinked";
+	provider: OAuthProvider;
+}
+
 /** All event types union. */
 export type OwnsuiteEvent =
 	| StateChangedEvent
@@ -89,4 +152,12 @@ export type OwnsuiteEvent =
 	| RowFetchedEvent
 	| RowCreatedEvent
 	| RowUpdatedEvent
-	| RowDeletedEvent;
+	| RowDeletedEvent
+	| AuthRegisterEvent
+	| AuthLoginEvent
+	| AuthLogoutEvent
+	| AuthSessionChangedEvent
+	| AuthVerificationRequiredEvent
+	| ProfileUpdatedEvent
+	| OAuthLinkedEvent
+	| OAuthUnlinkedEvent;

@@ -21,7 +21,15 @@ import {
 import type { DomainError, OwnsuiteContext } from "./types/state.ts";
 import type { OwnedCollectionAdapter } from "./types/adapter.ts";
 import type { OwnsuiteEventType } from "./types/events.ts";
+import type {
+	AuthAdapter,
+	ProfileAdapter,
+	SessionStorageType,
+} from "./types/auth.ts";
 import { OwnedCollectionManager } from "./domains/owned-collection.ts";
+import { AuthManager } from "./domains/auth.ts";
+import { ProfileManager } from "./domains/profile.ts";
+import { SessionManager } from "./domains/session.ts";
 
 /**
  * Configuration for a single domain at construction time. The caller
@@ -42,6 +50,18 @@ export interface OwnsuiteConfig {
 	domains?: Record<string, OwnsuiteDomainConfig>;
 	/** Auto-initialize all registered domains on creation (default: false). */
 	autoInitialize?: boolean;
+	/** Auth / profile adapters. When present, ownsuite builds the
+	 *  SessionManager / AuthManager / ProfileManager trio and exposes them
+	 *  as `suite.auth`, `suite.profile`, `suite.session`. */
+	adapters?: {
+		auth?: AuthAdapter;
+		profile?: ProfileAdapter;
+	};
+	/** Session persistence config. Ignored when no auth adapter is provided. */
+	session?: {
+		storage?: SessionStorageType;
+		storageKey?: string;
+	};
 }
 
 /** Options for {@link Ownsuite.setContext}. */
@@ -78,9 +98,79 @@ export class Ownsuite {
 	readonly #domains = new Map<string, OwnedCollectionManager<any, any, any>>();
 	#destroyed = false;
 
+	/** Optional auth/session/profile managers. Present iff `adapters.auth`
+	 *  was supplied at construction. */
+	readonly session: SessionManager | null = null;
+	readonly auth: AuthManager | null = null;
+	readonly profile: ProfileManager | null = null;
+
 	constructor(config: OwnsuiteConfig = {}) {
 		this.#pubsub = createPubSub();
 		this.#context = { ...(config.context ?? {}) };
+
+		// Build session / auth / profile managers if the auth adapter is wired.
+		if (config.adapters?.auth) {
+			const session = new SessionManager({
+				storage: config.session?.storage,
+				storageKey: config.session?.storageKey,
+				pubsub: this.#pubsub,
+			});
+			this.session = session;
+
+			// Profile adapter is optional but strongly encouraged. Without it
+			// login still works — we just don't hydrate roles/isVerified from
+			// /me after auth and consumers must call auth-result-based state
+			// themselves.
+			const profileAdapter = config.adapters.profile;
+			if (profileAdapter) {
+				this.profile = new ProfileManager({
+					adapter: profileAdapter,
+					session,
+					pubsub: this.#pubsub,
+					context: this.#context,
+				});
+			}
+
+			// AuthManager requires a profile manager to hydrate the subject
+			// after login. If none was provided, build a stub that throws —
+			// AuthManager will still call it inside a try/catch and recover.
+			const profileForAuth = this.profile ?? new ProfileManager({
+				adapter: {
+					get: () =>
+						Promise.reject(new Error("no profile adapter configured")),
+					update: () =>
+						Promise.reject(new Error("no profile adapter configured")),
+					listOAuth: () => Promise.resolve([]),
+					unlinkOAuth: () =>
+						Promise.reject(new Error("no profile adapter configured")),
+				},
+				session,
+				pubsub: this.#pubsub,
+				context: this.#context,
+			});
+
+			this.auth = new AuthManager({
+				adapter: config.adapters.auth,
+				session,
+				profile: profileForAuth,
+				pubsub: this.#pubsub,
+				context: this.#context,
+				onIdentityChanged: (ctx) => this.#onIdentityChanged(ctx),
+			});
+
+			// Listen for session changes to keep the suite-wide context
+			// `jwt` / `subjectId` in sync with the authenticated session.
+			session.subscribe((s) => {
+				const patch: OwnsuiteContext = {
+					jwt: s.jwt ?? undefined,
+					subjectId: s.subject?.id || undefined,
+				};
+				this.#context = { ...this.#context, ...patch };
+				for (const m of this.#domains.values()) {
+					m.setContext(patch);
+				}
+			});
+		}
 
 		for (const [name, cfg] of Object.entries(config.domains ?? {})) {
 			this.registerDomain(name, cfg);
@@ -91,6 +181,24 @@ export class Ownsuite {
 			// land in that domain's error state. See `hasErrors()` / `errors()`
 			// to detect them after boot.
 			void this.initialize();
+		}
+	}
+
+	/** Identity-change hook fired by the AuthManager after a successful
+	 *  login / register / logout / OAuth login. Reset every owner-scoped
+	 *  domain so their subscribed state reflects the new subject (or the
+	 *  anonymous state). Subsequent fetches pick up the new ctx.jwt. */
+	async #onIdentityChanged(ctx: OwnsuiteContext): Promise<void> {
+		for (const m of this.#domains.values()) m.setContext(ctx);
+		for (const m of this.#domains.values()) m.reset();
+		// Re-init for authenticated state; stay at "initializing" for logout
+		// (so stale data doesn't flash while consumers unmount).
+		if (ctx.jwt) {
+			try {
+				await this.initialize();
+			} catch {
+				// initialize() doesn't reject on domain errors, but guard anyway.
+			}
 		}
 	}
 
@@ -245,6 +353,8 @@ export class Ownsuite {
 		this.#destroyed = true;
 		for (const m of this.#domains.values()) m.destroy();
 		this.#domains.clear();
+		this.profile?.destroy();
+		this.session?.destroy();
 		// Our internal pubsub: clear all subscribers. Best-effort — if a custom
 		// pubsub implementation doesn't expose `unsubscribeAll`, skip it.
 		const ps = this.#pubsub as unknown as { unsubscribeAll?: () => void };

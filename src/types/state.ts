@@ -47,6 +47,13 @@ export interface OwnsuiteContext {
 	/** Hint — not used for authorization. The server is authoritative. */
 	subjectId?: string;
 	/**
+	 * JWT to pass through to adapters as the `Authorization: Bearer <jwt>`
+	 * credential. Managed by the `SessionManager` — consumers don't set this
+	 * directly. When present, adapters must forward it. When absent, the
+	 * server will treat the request as anonymous.
+	 */
+	jwt?: string;
+	/**
 	 * Per-operation abort signal injected by the manager. Adapters should
 	 * forward this to `fetch(url, { signal: ctx.signal })`. Aborts fire on
 	 * `reset()`, `destroy()`, and when a newer read supersedes an older one.
