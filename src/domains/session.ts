@@ -136,13 +136,7 @@ export class SessionManager {
 		this.#store = createStore<SessionState>({ ...EMPTY });
 
 		const configured = options.storage ?? "local";
-		if (typeof configured === "object" && configured !== null) {
-			this.#customStorage = configured;
-			this.#builtIn = null;
-			this.#defaultStorageType = "local";
-			this.#activeStorage = configured;
-			this.#activeStorageType = "custom";
-		} else {
+		if (typeof configured === "string") {
 			this.#customStorage = null;
 			this.#builtIn = {
 				local: resolveSessionStorage("local"),
@@ -152,6 +146,12 @@ export class SessionManager {
 			this.#defaultStorageType = configured;
 			this.#activeStorage = this.#builtIn[configured];
 			this.#activeStorageType = configured;
+		} else {
+			this.#customStorage = configured;
+			this.#builtIn = null;
+			this.#defaultStorageType = "local";
+			this.#activeStorage = configured;
+			this.#activeStorageType = "custom";
 		}
 
 		this.#hydrate();
@@ -276,16 +276,11 @@ export class SessionManager {
 		storage?: SessionStorageType;
 	}): void {
 		const { jwt, subject, expiresAt = null, storage } = opts;
-		if (
-			storage !== undefined &&
-			typeof storage === "string" &&
-			this.#builtIn
-		) {
-			const target = storage as BuiltInStorageType;
-			if (this.#activeStorage !== this.#builtIn[target]) {
+		if (typeof storage === "string" && this.#builtIn) {
+			if (this.#activeStorage !== this.#builtIn[storage]) {
 				this.#activeStorage.del(this.#storageKey);
-				this.#activeStorage = this.#builtIn[target];
-				this.#activeStorageType = target;
+				this.#activeStorage = this.#builtIn[storage];
+				this.#activeStorageType = storage;
 			}
 		}
 		this.#store.set({
