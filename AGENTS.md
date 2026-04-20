@@ -6,7 +6,7 @@ Machine-readable documentation for AI coding assistants.
 
 ```yaml
 name: "@marianmeres/ownsuite"
-version: "2.0.0"
+version: "2.1.0"
 type: "library"
 language: "typescript"
 runtime: "deno"
@@ -153,7 +153,14 @@ export {
 	createMockAuthAdapter, createMockProfileAdapter,
 	createMockAuthStore, verifyMockAccount,
 } from "./adapters/mod.ts";
-export type { MockAuthStore } from "./adapters/mod.ts";
+export type { MockAccount, MockAuthStore } from "./adapters/mod.ts";
+
+// Upstream types re-exported so they appear in the public doc graph
+// (they already surface as return types of subscribe / on). Not intended
+// as primary consumer API — use them only when typing wrappers.
+export type { PubSub, Subscriber, Unsubscriber } from "@marianmeres/pubsub";
+export type { StoreLike } from "@marianmeres/store";
+export type { Clog } from "@marianmeres/clog";
 ```
 
 ## Account lifecycle (optional)

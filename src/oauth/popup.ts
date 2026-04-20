@@ -12,25 +12,41 @@
  * via a MessageChannel without a real browser.
  */
 
+/** `postMessage` shape the server's OAuth callback posts on successful
+ *  login (`action: "login"`). */
 export interface OAuthPopupLoginMessage {
+	/** Discriminator. */
 	type: "oauth_login_success";
+	/** Freshly minted JWT. */
 	jwt: string;
+	/** Email on the account (after provider-email resolution). */
 	email: string;
+	/** Roles assigned to the account. */
 	roles?: string[];
+	/** True when the account was created as part of this flow. */
 	isNewAccount?: boolean;
+	/** Optional post-login redirect hint the server proposes. */
 	redirectUrl?: string;
 }
 
+/** `postMessage` shape the server posts on successful link
+ *  (`action: "link"`). */
 export interface OAuthPopupLinkMessage {
+	/** Discriminator. */
 	type: "oauth_link_success";
+	/** Which provider was just linked. */
 	provider: string;
 }
 
+/** `postMessage` shape the server posts on error. Rejects the promise. */
 export interface OAuthPopupErrorMessage {
+	/** Discriminator. */
 	type: "oauth_error";
+	/** Error string suitable for surfacing to the user. */
 	error: string;
 }
 
+/** Union returned by {@link openOAuthPopup}. */
 export type OAuthPopupMessage =
 	| OAuthPopupLoginMessage
 	| OAuthPopupLinkMessage;
@@ -40,23 +56,32 @@ export type OAuthPopupMessage =
  * supply a shim.
  */
 export interface PopupWindowHost {
+	/** Open a popup and return a handle, or `null` when blocked. */
 	open(url: string, target: string, features?: string): PopupWindowHandle | null;
+	/** Listen for `"message"` events emitted by the popup. */
 	addEventListener(
 		type: "message",
 		listener: (event: MessageEvent) => void,
 	): void;
+	/** Stop listening for `"message"` events. */
 	removeEventListener(
 		type: "message",
 		listener: (event: MessageEvent) => void,
 	): void;
 }
 
+/** Minimal surface of a popup window handle that {@link openOAuthPopup}
+ *  interacts with after `host.open(...)`. */
 export interface PopupWindowHandle {
+	/** Reflects whether the popup has been closed (by the user or server). */
 	closed: boolean;
+	/** Bring the popup to the front, when the host supports it. */
 	focus?(): void;
+	/** Close the popup programmatically. */
 	close?(): void;
 }
 
+/** Options for {@link openOAuthPopup}. */
 export interface OpenOAuthPopupOptions {
 	/** Host window — defaults to `globalThis` when running in the browser. */
 	host?: PopupWindowHost;

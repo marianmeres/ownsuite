@@ -38,7 +38,10 @@ import { SessionManager } from "./domains/session.ts";
  */
 // deno-lint-ignore no-explicit-any
 export interface OwnsuiteDomainConfig<TRow = any, TCreate = any, TUpdate = any> {
+	/** Adapter that talks to the server for this domain. */
 	adapter: OwnedCollectionAdapter<TRow, TCreate, TUpdate>;
+	/** Row-id extractor — used for optimistic update / delete matching.
+	 *  Defaults to reading `row.model_id` or `row.id`. */
 	getRowId?: (row: TRow) => string;
 }
 
@@ -98,12 +101,19 @@ export class Ownsuite {
 	readonly #domains = new Map<string, OwnedCollectionManager<any, any, any>>();
 	#destroyed = false;
 
-	/** Optional auth/session/profile managers. Present iff `adapters.auth`
-	 *  was supplied at construction. */
+	/** Session manager. Present iff `adapters.auth` was supplied at
+	 *  construction; otherwise `null`. */
 	readonly session: SessionManager | null = null;
+	/** Auth manager (register/login/OAuth verbs). Present iff
+	 *  `adapters.auth` was supplied; otherwise `null`. */
 	readonly auth: AuthManager | null = null;
+	/** Profile manager for `/me`. Present iff BOTH `adapters.auth` and
+	 *  `adapters.profile` were supplied; otherwise `null`. */
 	readonly profile: ProfileManager | null = null;
 
+	/** Build a new suite. See {@link OwnsuiteConfig} for every knob.
+	 *  Account-lifecycle managers are attached only when `adapters.auth`
+	 *  is supplied. */
 	constructor(config: OwnsuiteConfig = {}) {
 		this.#pubsub = createPubSub();
 		this.#context = { ...(config.context ?? {}) };
@@ -299,6 +309,7 @@ export class Ownsuite {
 		}
 	}
 
+	/** Snapshot of the shared context propagated to every domain adapter. */
 	getContext(): OwnsuiteContext {
 		return { ...this.#context };
 	}

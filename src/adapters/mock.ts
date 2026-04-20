@@ -15,6 +15,8 @@ import type {
 } from "../types/adapter.ts";
 import type { OwnsuiteContext } from "../types/state.ts";
 
+/** Options for {@link createMockOwnedCollectionAdapter}. Only present in
+ *  tests / storybooks — production code never calls this. */
 export interface MockAdapterOptions<TRow> {
 	/** Initial seed rows. */
 	seed?: TRow[];

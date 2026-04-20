@@ -31,3 +31,11 @@ export * from "./domains/mod.ts";
 export * from "./types/mod.ts";
 export * from "./adapters/mod.ts";
 export * from "./oauth/popup.ts";
+
+// Re-export upstream types that bleed into our public API so jsr's
+// doc-graph check doesn't flag them as private. They are the exact
+// types users already receive from `subscribe(...)`, `on(...)`, etc.,
+// so exposing them here is documentation, not surface expansion.
+export type { PubSub, Subscriber, Unsubscriber } from "@marianmeres/pubsub";
+export type { StoreLike } from "@marianmeres/store";
+export type { Clog } from "@marianmeres/clog";

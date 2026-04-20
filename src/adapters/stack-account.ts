@@ -39,6 +39,7 @@ import type {
 	ProfileResult,
 } from "../types/mod.ts";
 
+/** Options shared by the two stack-account adapter factories. */
 export interface StackAccountAdapterOptions {
 	/** Base URL of the mounted stack-account app. Default: "/api/account". */
 	baseUrl?: string;
@@ -130,6 +131,9 @@ interface ServerMeResponse {
 	data: ProfileResult;
 }
 
+/** Build the default {@link AuthAdapter} for `@marianmeres/stack-account`.
+ *  Points at `{baseUrl}/auth/*` (register/login/logout/verify/password/
+ *  delete) and `{baseUrl}/oauth/*` (init + callback). */
 export function createStackAccountAuthAdapter(
 	opts: StackAccountAdapterOptions = {},
 ): AuthAdapter {
@@ -219,6 +223,9 @@ export function createStackAccountAuthAdapter(
 	};
 }
 
+/** Build the default {@link ProfileAdapter} for `@marianmeres/stack-account`.
+ *  Points at `{baseUrl}/me` (GET + PUT) and `{baseUrl}/me/oauth/*` for
+ *  connection listing / unlinking. */
 export function createStackAccountProfileAdapter(
 	opts: StackAccountAdapterOptions = {},
 ): ProfileAdapter {

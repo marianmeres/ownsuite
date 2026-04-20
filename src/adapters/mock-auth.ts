@@ -21,16 +21,28 @@ import type {
 	ProfileResult,
 } from "../types/mod.ts";
 
-interface MockAccount {
+/** In-memory account record held by {@link MockAuthStore}. Test code may
+ *  construct these via the `seed` option of {@link createMockAuthStore}. */
+export interface MockAccount {
+	/** Email (and implicit primary key in the mock store). */
 	email: string;
+	/** Plaintext password — the mock runs no hashing. */
 	password: string;
+	/** Authorization roles returned on the next login / `/me` read. */
 	roles: string[];
+	/** Verified flag — flipped by {@link verifyMockAccount}. */
 	isVerified: boolean;
+	/** Whether the account has a local password (OAuth-only accounts: `false`). */
 	hasPassword: boolean;
+	/** Linked OAuth provider connections. */
 	oauthConnections: OAuthConnection[];
 }
 
+/** In-memory store backing the mock auth + profile adapters. Pass the same
+ *  store to `createMockAuthAdapter` and `createMockProfileAdapter` so they
+ *  share state. Fields are public so test code can peek or mutate them. */
 export interface MockAuthStore {
+	/** Account records, keyed by email. */
 	accounts: Map<string, MockAccount>;
 	/** If true, register/login return requiresVerification=true until the
 	 *  email is explicitly verified via `verifyMockAccount()`. */
@@ -39,8 +51,13 @@ export interface MockAuthStore {
 	jwtsByEmail: Map<string, string>;
 }
 
+/** Create a fresh in-memory {@link MockAuthStore}. Pass `seed` to preload
+ *  accounts, `requireVerifiedEmail: true` to make login gate on verification. */
 export function createMockAuthStore(init: {
+	/** When true, register/login return `requiresVerification: true` until
+	 *  the account is verified via {@link verifyMockAccount}. Default: `false`. */
 	requireVerifiedEmail?: boolean;
+	/** Accounts to preload into the store. */
 	seed?: MockAccount[];
 } = {}): MockAuthStore {
 	const store: MockAuthStore = {
@@ -58,6 +75,9 @@ function mintJwt(email: string): string {
 	return `mock.${btoa(email)}.${Date.now().toString(36)}`;
 }
 
+/** Build an {@link AuthAdapter} backed by the given in-memory
+ *  {@link MockAuthStore}. Simulates register / login / password change /
+ *  delete without a server. JWTs are synthetic strings — do not ship. */
 export function createMockAuthAdapter(store: MockAuthStore): AuthAdapter {
 	return {
 		register(input, _ctx: OwnsuiteContext) {
@@ -208,6 +228,9 @@ export function createMockAuthAdapter(store: MockAuthStore): AuthAdapter {
 	};
 }
 
+/** Build a {@link ProfileAdapter} backed by the given {@link MockAuthStore}.
+ *  Shares state with an auth adapter created from the same store so login-
+ *  then-`/me` round-trips reflect each other. */
 export function createMockProfileAdapter(store: MockAuthStore): ProfileAdapter {
 	function emailFromCtx(ctx: OwnsuiteContext): string | null {
 		const jwt = ctx.jwt as string | undefined;

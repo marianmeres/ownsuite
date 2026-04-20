@@ -18,8 +18,11 @@ import type { OwnedCollectionAdapter } from "../types/adapter.ts";
 import type { OwnedCollectionState, OwnsuiteContext } from "../types/state.ts";
 import { BaseDomainManager, type BaseDomainOptions } from "./base.ts";
 
+/** Construction-time options for {@link OwnedCollectionManager}. */
 export interface OwnedCollectionManagerOptions<TRow, TCreate, TUpdate>
 	extends BaseDomainOptions {
+	/** Server adapter for this domain. Optional at construction — can be
+	 *  installed later with `setAdapter()`. */
 	adapter?: OwnedCollectionAdapter<TRow, TCreate, TUpdate>;
 	/** Function that extracts the row id from a row. Defaults to `row.model_id`. */
 	getRowId?: (row: TRow) => string;
@@ -54,6 +57,8 @@ export class OwnedCollectionManager<
 > {
 	readonly #getRowId: (row: TRow) => string;
 
+	/** Build a new manager. Normally called by `Ownsuite.registerDomain`,
+	 *  not consumers. */
 	constructor(
 		domainName: string,
 		options: OwnedCollectionManagerOptions<TRow, TCreate, TUpdate> = {},

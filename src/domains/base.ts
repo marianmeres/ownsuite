@@ -53,11 +53,20 @@ function safeClone<T>(value: T): T {
  * @typeParam TAdapter - The adapter interface type for server communication.
  */
 export abstract class BaseDomainManager<TData, TAdapter> {
+	/** Reactive store holding the full {@link DomainStateWrapper} for this
+	 *  domain. Subclasses read + publish through it. */
 	protected readonly store: StoreLike<DomainStateWrapper<TData>>;
+	/** Shared pubsub used to emit domain lifecycle / CRUD events. */
 	protected readonly pubsub: PubSub;
+	/** Stable name of this domain (used as event `domain` and log prefix). */
 	protected readonly domainName: DomainName;
+	/** Scoped logger, prefixed with `ownsuite:<domainName>`. */
 	protected readonly clog: Clog;
+	/** Server adapter instance; `null` until `setAdapter()` / constructor
+	 *  installs one. */
 	protected adapter: TAdapter | null = null;
+	/** Current context forwarded to every adapter call (jwt, subjectId,
+	 *  signal, plus any consumer-supplied extras). */
 	protected context: OwnsuiteContext = {};
 
 	/** Mutation chain head. Each create/update/delete appends itself here. */
@@ -71,6 +80,9 @@ export abstract class BaseDomainManager<TData, TAdapter> {
 
 	#destroyed = false;
 
+	/** Construct a new domain manager. Not called directly — subclasses like
+	 *  {@link OwnedCollectionManager} extend this and are instantiated by
+	 *  the suite. */
 	constructor(domainName: DomainName, options: BaseDomainOptions = {}) {
 		this.domainName = domainName;
 		this.clog = createClog(`ownsuite:${domainName}`, { color: "auto" });
@@ -101,10 +113,14 @@ export abstract class BaseDomainManager<TData, TAdapter> {
 		return this.#destroyed;
 	}
 
+	/** Install or replace the server adapter for this domain. Call
+	 *  {@link refresh} afterwards to pick up data from the new source. */
 	setAdapter(adapter: TAdapter): void {
 		this.adapter = adapter;
 	}
 
+	/** Current adapter, or `null` when none installed (typically only in
+	 *  tests or between `destroy()` and re-attachment). */
 	getAdapter(): TAdapter | null {
 		return this.adapter;
 	}
@@ -122,6 +138,8 @@ export abstract class BaseDomainManager<TData, TAdapter> {
 		this.context = { ...context };
 	}
 
+	/** Snapshot of the current context. Mutating the returned object does
+	 *  not affect the manager. */
 	getContext(): OwnsuiteContext {
 		return { ...this.context };
 	}
@@ -307,6 +325,8 @@ export abstract class BaseDomainManager<TData, TAdapter> {
 		}
 	}
 
+	/** Boot the domain — typically fetch its initial list. Subclasses
+	 *  implement this; see {@link OwnedCollectionManager.initialize}. */
 	abstract initialize(): Promise<void>;
 
 	/**

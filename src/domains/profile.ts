@@ -28,8 +28,14 @@ import type {
 } from "../types/mod.ts";
 import type { SessionManager } from "./session.ts";
 
+/** Construction-time options for {@link ProfileManager}. Assembled by
+ *  `createOwnsuite` when a profile adapter is supplied. */
 export interface ProfileManagerOptions {
+	/** Profile adapter — talks to `/me`. */
 	adapter: ProfileAdapter;
+	/** Session manager — used to patch the subject in place on fetch /
+	 *  update so consumers reading the session see updates without a second
+	 *  subscription. */
 	session: SessionManager;
 	/** Shared pubsub for event emission. Private if omitted. */
 	pubsub?: PubSub;
@@ -38,6 +44,7 @@ export interface ProfileManagerOptions {
 	context?: OwnsuiteContext;
 }
 
+/** Reactive state exposed by {@link ProfileManager.get} / `subscribe`. */
 export interface ProfileState {
 	/** Null until the first successful fetch. */
 	profile: ProfileResult | null;
@@ -66,6 +73,7 @@ export class ProfileManager {
 	/** Currently-active read controller, for abort-supersede semantics. */
 	#readController: AbortController | null = null;
 
+	/** Build a new profile manager. Normally called by `createOwnsuite`. */
 	constructor(options: ProfileManagerOptions) {
 		this.#adapter = options.adapter;
 		this.#session = options.session;
@@ -74,18 +82,22 @@ export class ProfileManager {
 		this.#store = createStore<ProfileState>({ ...EMPTY });
 	}
 
+	/** Svelte-compatible subscribe method over {@link ProfileState}. */
 	get subscribe(): StoreLike<ProfileState>["subscribe"] {
 		return this.#store.subscribe;
 	}
 
+	/** Current profile state snapshot. */
 	get(): ProfileState {
 		return this.#store.get();
 	}
 
+	/** Merge `ctx` into the adapter context (keys not present are kept). */
 	setContext(ctx: OwnsuiteContext): void {
 		this.#context = { ...this.#context, ...ctx };
 	}
 
+	/** Replace the adapter context wholesale. */
 	replaceContext(ctx: OwnsuiteContext): void {
 		this.#context = { ...ctx };
 	}
@@ -182,11 +194,14 @@ export class ProfileManager {
 		}
 	}
 
+	/** List OAuth provider connections linked to the authenticated account. */
 	async listOAuth(): Promise<OAuthConnection[]> {
 		const ctrl = new AbortController();
 		return await this.#adapter.listOAuth(this.#ctxFor(ctrl.signal));
 	}
 
+	/** Unlink an OAuth provider. Emits `oauth:unlinked` and best-effort
+	 *  re-fetches the profile so the connection list reflects the change. */
 	async unlinkOAuth(provider: OAuthProvider): Promise<void> {
 		const ctrl = new AbortController();
 		await this.#adapter.unlinkOAuth(provider, this.#ctxFor(ctrl.signal));
@@ -203,11 +218,14 @@ export class ProfileManager {
 		}
 	}
 
+	/** Abort any in-flight fetch and clear cached profile state. */
 	reset(): void {
 		this.#abortActiveRead("reset");
 		this.#store.set({ ...EMPTY });
 	}
 
+	/** Tear down the manager — aborts in-flight fetches and clears state.
+	 *  Called by `Ownsuite.destroy()`. */
 	destroy(): void {
 		this.#abortActiveRead("destroyed");
 		this.#store.set({ ...EMPTY });

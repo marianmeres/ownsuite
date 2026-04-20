@@ -28,13 +28,19 @@ import { openOAuthPopup } from "../oauth/popup.ts";
 import type { SessionManager } from "./session.ts";
 import type { ProfileManager } from "./profile.ts";
 
+/** Construction-time options for {@link AuthManager}. Normally assembled
+ *  by `createOwnsuite` — call sites rarely instantiate this directly. */
 export interface AuthManagerOptions {
+	/** Server adapter. The manager is stateless beyond what it pushes into
+	 *  {@link SessionManager}. */
 	adapter: AuthAdapter;
+	/** Session manager that receives the JWT / subject / status writes. */
 	session: SessionManager;
 	/** Profile manager — auth hydrates the session subject from `/me`
 	 *  immediately after login so subscribers see roles/isVerified/etc.
 	 *  without a second await. */
 	profile: ProfileManager;
+	/** Shared pubsub for event emission. Created privately when omitted. */
 	pubsub?: PubSub;
 	/** Called after a successful identity change (register/login/OAuth
 	 *  login/logout). The orchestrator wires this to reset + re-init every
@@ -49,6 +55,13 @@ export interface AuthManagerOptions {
 	profileAdapter?: ProfileAdapter;
 }
 
+/**
+ * Verbs for the account lifecycle: register / login / logout / OAuth /
+ * password-reset / delete account. Holds no state of its own — every
+ * outcome is piped into the linked {@link SessionManager}, which is the
+ * single source of truth for JWT + subject + status. Usually accessed via
+ * `suite.auth`, not constructed directly.
+ */
 export class AuthManager {
 	readonly #pubsub: PubSub;
 	readonly #adapter: AuthAdapter;
@@ -59,6 +72,8 @@ export class AuthManager {
 	) => Promise<void> | void;
 	#context: OwnsuiteContext;
 
+	/** Construct a new `AuthManager`. Normally called by `createOwnsuite`,
+	 *  not by consumers. */
 	constructor(options: AuthManagerOptions) {
 		this.#adapter = options.adapter;
 		this.#session = options.session;
@@ -68,10 +83,14 @@ export class AuthManager {
 		this.#context = options.context ?? {};
 	}
 
+	/** Merge `ctx` into the current adapter context. Keys not in `ctx`
+	 *  are preserved. */
 	setContext(ctx: OwnsuiteContext): void {
 		this.#context = { ...this.#context, ...ctx };
 	}
 
+	/** Replace the adapter context wholesale. Callers use this when
+	 *  switching subjects or clearing host-app context. */
 	replaceContext(ctx: OwnsuiteContext): void {
 		this.#context = { ...ctx };
 	}
@@ -151,6 +170,12 @@ export class AuthManager {
 
 	// ─────────────────────── verbs ──────────────────────────────────────────
 
+	/** Create a new account. Returns the server's {@link AuthTokenResult}.
+	 *  When the verification gate is on, the result carries
+	 *  `requiresVerification: true` and the session flips to `"unverified"`
+	 *  (no JWT). Otherwise the session flips to `"authenticated"` and the
+	 *  profile is hydrated from `/me`. `options.remember` pins the session's
+	 *  storage backend — see {@link AuthActionOptions.remember}. */
 	async register(
 		input: {
 			email: string;
@@ -171,6 +196,11 @@ export class AuthManager {
 		return await this.#applyAuthResult(result, options?.remember);
 	}
 
+	/** Exchange credentials for a JWT. On success the session flips to
+	 *  `"authenticated"` and the profile is hydrated from `/me`. Rejects
+	 *  on bad credentials (session untouched) or — when the server's
+	 *  verification gate is on for an unverified account — throws through
+	 *  the adapter. `options.remember` controls storage persistence. */
 	async login(
 		input: {
 			email: string;
@@ -187,6 +217,10 @@ export class AuthManager {
 		return await this.#applyAuthResult(result, options?.remember);
 	}
 
+	/** Log out. Best-effort server revoke + unconditional local clear;
+	 *  the session is always wiped even if the server call fails. Fires
+	 *  `auth:logout` and the `onIdentityChanged` hook. Safe to call when
+	 *  already anonymous. */
 	async logout(): Promise<void> {
 		const subjectId = this.#session.get().subject?.id;
 		try {
@@ -209,6 +243,8 @@ export class AuthManager {
 		}
 	}
 
+	/** Trigger a fresh verification email. Anti-enumeration: always resolves
+	 *  regardless of whether the address corresponds to a real account. */
 	async resendVerification(input: {
 		email: string;
 		lang?: string;
@@ -216,6 +252,7 @@ export class AuthManager {
 		await this.#adapter.resendVerification(input, this.#ctx());
 	}
 
+	/** Trigger a password-reset email. Anti-enumeration: always resolves. */
 	async requestPasswordReset(input: {
 		email: string;
 		lang?: string;
@@ -223,6 +260,9 @@ export class AuthManager {
 		await this.#adapter.requestPasswordReset(input, this.#ctx());
 	}
 
+	/** Change the password. Pass `current_password` for an authenticated
+	 *  self-change, or `token` for a reset-link flow. `new_password` and
+	 *  `confirm_password` are always required. */
 	async changePassword(input: {
 		current_password?: string;
 		new_password: string;
@@ -232,6 +272,8 @@ export class AuthManager {
 		await this.#adapter.changePassword(input, this.#ctx());
 	}
 
+	/** Irreversibly delete the authenticated account. On success clears the
+	 *  local session and fires `auth:logout` + `onIdentityChanged`. */
 	async deleteAccount(input: {
 		password?: string;
 		confirm?: boolean;

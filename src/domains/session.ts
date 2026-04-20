@@ -94,6 +94,7 @@ export function resolveSessionStorage(
 	};
 }
 
+/** Construction-time options for {@link SessionManager}. */
 export interface SessionManagerOptions {
 	/** Storage backend for session persistence. Default: "local". */
 	storage?: SessionStorageType;
@@ -130,6 +131,9 @@ export class SessionManager {
 	#activeStorage: SessionStorage;
 	#activeStorageType: BuiltInStorageType | "custom";
 
+	/** Build a new session manager. Hydrates synchronously from storage
+	 *  (probing `local → session → memory` in the built-in case) before the
+	 *  constructor returns, so consumers can read `get()` immediately. */
 	constructor(options: SessionManagerOptions = {}) {
 		this.#pubsub = options.pubsub ?? createPubSub();
 		this.#storageKey = options.storageKey ?? DEFAULT_STORAGE_KEY;
@@ -240,14 +244,19 @@ export class SessionManager {
 		return this.#store.get();
 	}
 
+	/** True when `status === "authenticated"`. Shorthand for `get().status`
+	 *  checks in consumer code. */
 	get isAuthenticated(): boolean {
 		return this.#store.get().status === "authenticated";
 	}
 
+	/** True when `status === "unverified"` — account exists but the server
+	 *  gates login behind email verification. */
 	get isUnverified(): boolean {
 		return this.#store.get().status === "unverified";
 	}
 
+	/** True when `status === "anonymous"` — no session. */
 	get isAnonymous(): boolean {
 		return this.#store.get().status === "anonymous";
 	}

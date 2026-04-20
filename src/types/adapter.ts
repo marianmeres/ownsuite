@@ -17,7 +17,9 @@ import type { OwnsuiteContext } from "./state.ts";
  * whatever shape their server uses and map it here.
  */
 export interface OwnedListResult<TRow> {
+	/** Rows returned by the list call. */
 	data: TRow[];
+	/** Pagination / total-count / any arbitrary server-supplied metadata. */
 	meta: Record<string, unknown>;
 }
 
@@ -26,7 +28,9 @@ export interface OwnedListResult<TRow> {
  * collection package's REST envelope.
  */
 export interface OwnedRowResult<TRow> {
+	/** The row. */
 	data: TRow;
+	/** Optional per-row metadata from the server. */
 	meta?: Record<string, unknown>;
 }
 

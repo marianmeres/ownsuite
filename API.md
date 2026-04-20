@@ -797,15 +797,26 @@ interface StackAccountAdapterOptions {
 
 See [src/oauth/popup.ts](src/oauth/popup.ts) for full definitions. `OAuthPopupMessage` is a union of `OAuthPopupLoginMessage` (`{ type: "oauth_login_success", jwt, email, roles?, ... }`) and `OAuthPopupLinkMessage` (`{ type: "oauth_link_success", provider }`). Errors posted by the server (`{ type: "oauth_error", error }`) cause the promise to reject.
 
-### `MockAuthStore`
+### `MockAccount` / `MockAuthStore`
 
 ```typescript
+interface MockAccount {
+    email: string;
+    password: string;         // plaintext — mock does no hashing
+    roles: string[];
+    isVerified: boolean;
+    hasPassword: boolean;
+    oauthConnections: OAuthConnection[];
+}
+
 interface MockAuthStore {
     accounts: Map<string, MockAccount>;
     requireVerifiedEmail: boolean;
     jwtsByEmail: Map<string, string>;
 }
 ```
+
+Fields are public by design so test code can peek at / mutate them directly.
 
 ---
 
