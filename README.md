@@ -24,11 +24,11 @@ Ownsuite gives front-end applications a uniform way to read, create, update and 
 - **Event system** — subscribe to list fetches, row CRUD, and lifecycle transitions
 - **Mock adapter** — in-memory fixture for tests, with configurable failure injection and latency
 - **Explicit lifecycle** — `suite.destroy()` aborts in-flight work and releases listeners cleanly
-- **Account lifecycle (opt-in)** — `suite.auth` / `suite.session` / `suite.profile` for register / login / OAuth / verify / logout / profile edit / delete account, wired to pair with [`@marianmeres/stack-account`](../stack-account/) via the bundled default adapters
+- **Account lifecycle (opt-in)** — `suite.auth` / `suite.session` / `suite.profile` for register / login / OAuth / verify / logout / profile edit / delete account, wired to pair with `@marianmeres/stack-account` via the bundled default adapters
 
 ## Authentication (optional)
 
-Pass an `AuthAdapter` to `createOwnsuite` to attach the account-lifecycle managers. The default adapters target the [`@marianmeres/stack-account`](../stack-account/) REST surface; apps with custom routes can write their own against the `AuthAdapter` / `ProfileAdapter` interfaces exported from this package.
+Pass an `AuthAdapter` to `createOwnsuite` to attach the account-lifecycle managers. The default adapters target the `@marianmeres/stack-account` REST surface; apps with custom routes can write their own against the `AuthAdapter` / `ProfileAdapter` interfaces exported from this package.
 
 ```typescript
 import {
@@ -61,13 +61,13 @@ suite.session!.subscribe(({ status, subject }) => {
 // Register → server requires email verification (default gate in stack-account)
 await suite.auth!.register({
   email: "alice@example.com",
-  password: "hunter2hunter2",
-  password_confirm: "hunter2hunter2",
+  password: "mysecretpassword",
+  password_confirm: "mysecretpassword",
 });
 // suite.session!.get().status === "unverified"
 
 // After the user clicks the email link and the server flips isVerified:
-await suite.auth!.login({ email: "alice@example.com", password: "hunter2hunter2" });
+await suite.auth!.login({ email: "alice@example.com", password: "mysecretpassword" });
 // suite.session!.get().status === "authenticated"
 // Every registered owner-scoped domain is re-initialized with the new JWT.
 
@@ -78,7 +78,7 @@ await suite.auth!.initiateOAuth("google", { action: "login" });
 // a new verification email. Session subject is patched in place.
 await suite.profile!.update({
   email: "renamed@example.com",
-  current_password: "hunter2hunter2",
+  current_password: "mysecretpassword",
 });
 
 // Logout — revokes JWT server-side (via stack-account's jti deletion) and

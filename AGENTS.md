@@ -73,17 +73,28 @@ src/
 ├── types/
 │   ├── mod.ts
 │   ├── state.ts                # DomainState/Wrapper/Error, OwnsuiteContext, OwnedCollectionState
-│   ├── events.ts               # OwnsuiteEventType, OwnsuiteEvent union, per-event interfaces
-│   └── adapter.ts              # OwnedCollectionAdapter, OwnedListResult, OwnedRowResult
+│   ├── events.ts               # OwnsuiteEventType, OwnsuiteEvent union (incl. auth:* / profile:* / oauth:*)
+│   ├── adapter.ts              # OwnedCollectionAdapter, OwnedListResult, OwnedRowResult
+│   └── auth.ts                 # AuthAdapter, ProfileAdapter, SessionState/Subject/Status, OAuth*
 ├── domains/
 │   ├── mod.ts
 │   ├── base.ts                 # BaseDomainManager abstract class (mirrors ecsuite)
-│   └── owned-collection.ts     # OwnedCollectionManager<TRow, TCreate, TUpdate>
+│   ├── owned-collection.ts     # OwnedCollectionManager<TRow, TCreate, TUpdate>
+│   ├── session.ts              # SessionManager + pluggable SessionStorage resolver
+│   ├── auth.ts                 # AuthManager (register/login/logout/OAuth/verify/delete)
+│   └── profile.ts              # ProfileManager (/me singleton)
+├── oauth/
+│   └── popup.ts                # openOAuthPopup + injectable PopupWindowHost for tests
 └── adapters/
     ├── mod.ts
-    └── mock.ts                 # createMockOwnedCollectionAdapter for tests
+    ├── mock.ts                 # createMockOwnedCollectionAdapter
+    ├── mock-auth.ts            # createMockAuthAdapter / createMockProfileAdapter / createMockAuthStore
+    └── stack-account.ts        # createStackAccountAuthAdapter / createStackAccountProfileAdapter
 tests/
-└── ownsuite.test.ts
+├── ownsuite.test.ts            # core suite + OwnedCollectionManager
+├── concurrency.test.ts         # critical-invariant coverage (abort-supersede, rollback, etc.)
+├── auth.test.ts                # AuthManager / ProfileManager / SessionManager
+└── oauth-popup.test.ts         # openOAuthPopup message / timeout / close / origin semantics
 ```
 
 ## Key Exports
@@ -350,13 +361,15 @@ dev:
 ## Testing
 
 ```bash
-deno task test       # run all tests (26 tests across ownsuite.test.ts + concurrency.test.ts)
+deno task test       # run all tests (44 tests across 4 files)
 deno task test:watch # watch mode
 ```
 
-`tests/concurrency.test.ts` covers the critical invariants: concurrent
-mutations, abort-supersede, getOne-not-setting-error, phantom-row
-prevention, destroy semantics, and the errors()/hasErrors() helpers.
+Coverage by file:
+- `tests/ownsuite.test.ts` — core suite + `OwnedCollectionManager` CRUD, events, rollback.
+- `tests/concurrency.test.ts` — critical invariants: concurrent mutations, abort-supersede, `getOne` not setting error, phantom-row prevention, destroy semantics, `errors()`/`hasErrors()` helpers.
+- `tests/auth.test.ts` — `AuthManager` / `ProfileManager` / `SessionManager`: register / login / logout / unverified gate / OAuth login (popup + redirect) / OAuth unlink / profile update patching session / deleteAccount / identity-change hook propagation.
+- `tests/oauth-popup.test.ts` — `openOAuthPopup` message / timeout / popup-closed / origin-mismatch semantics via injectable `PopupWindowHost`.
 
 ## Build & Publish
 
@@ -442,6 +455,12 @@ those; the behaviors changed are:
 Non-breaking additions: `suite.destroy()`, `suite.errors()`,
 `suite.hasErrors()`, `suite.setContext(ctx, { replace, refresh })`,
 `manager.isDestroyed`, `manager.replaceContext(ctx)`.
+
+**Account lifecycle managers (opt-in addition).** `suite.auth` /
+`suite.session` / `suite.profile` attach automatically when
+`adapters.auth` is passed to `createOwnsuite`. Existing owner-scoped
+CRUD consumers see no change unless they opt in. Full surface is
+described in the "Account lifecycle (optional)" section above.
 
 ## Differences from `@marianmeres/ecsuite`
 

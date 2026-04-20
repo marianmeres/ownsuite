@@ -63,6 +63,10 @@ Orchestrator that coordinates owner-scoped domain managers and provides a shared
 
 **Parameters:** same as `createOwnsuite`.
 
+#### `suite.session`, `suite.auth`, `suite.profile`
+
+Readonly properties pointing at the account-lifecycle managers. Populated only when `config.adapters.auth` was supplied — `null` otherwise. Full surface documented under [Account lifecycle (optional)](#account-lifecycle-optional).
+
 #### `suite.registerDomain(name, cfg)`
 
 Register a new domain after construction. Throws if `name` is already registered.
@@ -280,12 +284,23 @@ interface OwnsuiteConfig {
 	context?: OwnsuiteContext;
 	domains?: Record<string, OwnsuiteDomainConfig>;
 	autoInitialize?: boolean;
+	adapters?: {
+		auth?: AuthAdapter;
+		profile?: ProfileAdapter;
+	};
+	session?: {
+		storage?: SessionStorageType;   // "local" | "session" | "memory" | SessionStorage
+		storageKey?: string;            // default: "ownsuite:session"
+	};
 }
 ```
 
 - `context` — initial context passed to every adapter call.
 - `domains` — domain registry at construction time. Keys are arbitrary labels.
 - `autoInitialize` — fire-and-forget `initialize()` in the constructor. Default: `false`.
+- `adapters.auth` — when provided, the suite builds `SessionManager` / `AuthManager` / `ProfileManager` and exposes them as `suite.session` / `suite.auth` / `suite.profile`. Without it, those properties are `null`.
+- `adapters.profile` — optional but recommended companion. Without it, login still succeeds but the subject is not hydrated from `/me`.
+- `session.storage` / `session.storageKey` — persistence config for the session. Ignored when no `adapters.auth` is provided.
 
 ### `OwnsuiteDomainConfig<TRow, TCreate, TUpdate>`
 
@@ -404,7 +419,16 @@ type OwnsuiteEventType =
 	| "own:row:fetched"
 	| "own:row:created"
 	| "own:row:updated"
-	| "own:row:deleted";
+	| "own:row:deleted"
+	// Account lifecycle — only emitted when adapters.auth is wired
+	| "auth:register"
+	| "auth:login"
+	| "auth:logout"
+	| "auth:session:changed"
+	| "auth:verification:required"
+	| "profile:updated"
+	| "oauth:linked"
+	| "oauth:unlinked";
 ```
 
 ### `OwnsuiteEvent`
@@ -482,3 +506,310 @@ export function createRestAdapter(stack: string, entity: string): OwnedCollectio
 ```
 
 The `@marianmeres/joy` admin SPA ships a reusable factory — `createOwnedCollectionAdapter()` in `src/routes/me/owned-collection-adapter.ts` — that implements exactly this shape.
+
+---
+
+## Account lifecycle (optional)
+
+Attached automatically when `adapters.auth` is passed to `createOwnsuite`. See also the example at the top of [README.md](README.md).
+
+### `createStackAccountAuthAdapter(options?)`
+
+Default `AuthAdapter` pointing at the `@marianmeres/stack-account` REST surface.
+
+**Parameters:**
+- `options` (`StackAccountAdapterOptions`, optional)
+  - `options.baseUrl` (`string`, optional) — mount path. Default: `"/api/account"`.
+  - `options.fetch` (`typeof fetch`, optional) — custom fetch (tests / SSR).
+
+**Returns:** `AuthAdapter`
+
+Endpoints targeted:
+
+```
+POST   {baseUrl}/register
+POST   {baseUrl}/login
+POST   {baseUrl}/logout
+POST   {baseUrl}/verify/resend
+POST   {baseUrl}/password/reset
+POST   {baseUrl}/password/change
+DELETE {baseUrl}/me
+GET    {baseUrl}/oauth/{provider}/init
+```
+
+### `createStackAccountProfileAdapter(options?)`
+
+Default `ProfileAdapter`.
+
+**Parameters:** same `StackAccountAdapterOptions` as above.
+
+**Returns:** `ProfileAdapter`
+
+Endpoints targeted: `GET/PUT {baseUrl}/me`, `GET {baseUrl}/me/oauth`, `DELETE {baseUrl}/me/oauth/{provider}`.
+
+### `createMockAuthStore(init?)` / `createMockAuthAdapter(store)` / `createMockProfileAdapter(store)` / `verifyMockAccount(store, email)`
+
+In-memory mock for tests and demos. `createMockAuthStore` builds a shared state object; the adapter factories close over it.
+
+**`createMockAuthStore(init?)`** returns `MockAuthStore`. `init.requireVerifiedEmail` (default `false`) toggles the email-verification gate; `init.seed` can pre-populate accounts.
+
+**`verifyMockAccount(store, email)`** marks an account as verified — stands in for the user clicking the link in a real verification email.
+
+**Example:**
+```typescript
+const store = createMockAuthStore({ requireVerifiedEmail: true });
+const suite = createOwnsuite({
+    adapters: {
+        auth: createMockAuthAdapter(store),
+        profile: createMockProfileAdapter(store),
+    },
+});
+await suite.auth!.register({
+    email: "alice@example.com",
+    password: "mysecretpassword",
+    password_confirm: "mysecretpassword",
+});
+// suite.session!.get().status === "unverified"
+verifyMockAccount(store, "alice@example.com");
+await suite.auth!.login({ email: "alice@example.com", password: "mysecretpassword" });
+// suite.session!.get().status === "authenticated"
+```
+
+---
+
+### `SessionManager`
+
+Reactive session state + persistence. No HTTP. Attached as `suite.session`.
+
+#### `session.subscribe(listener)` / `session.get()`
+
+Svelte-compatible store over [`SessionState`](#sessionstate).
+
+#### `session.getJwt(): string | null`
+
+Current JWT, or `null` when anonymous.
+
+#### `session.isAuthenticated` / `session.isUnverified` / `session.isAnonymous` (boolean getters)
+
+Shorthand reads.
+
+#### `session.setAuthenticated({ jwt, subject, expiresAt? })`
+
+Enter the `authenticated` state. Normally called by `AuthManager`, not consumers.
+
+#### `session.setUnverified(email)` / `session.clear()` / `session.patchSubject(patch)`
+
+Mutation helpers — typically driven by `AuthManager` / `ProfileManager`.
+
+#### `session.destroy()`
+
+Clear storage and in-memory state. Called by `suite.destroy()`.
+
+---
+
+### `AuthManager`
+
+Verbs only. Attached as `suite.auth`. No state of its own — results flow into `SessionManager`.
+
+| Method | Purpose |
+|---|---|
+| `register({ email, password, password_confirm, roles?, extras? })` | Create account. Returns an `AuthTokenResult`. When the server's verification gate is on, the result carries `requiresVerification: true` and the session flips to `"unverified"` — no JWT yet. |
+| `login({ email, password })` | Exchange credentials for a JWT. Session flips to `"authenticated"` on success, `"unverified"` if the server reports the gate. |
+| `logout()` | Best-effort server revoke + local clear. Idempotent. |
+| `resendVerification({ email, lang? })` | Trigger a fresh verification email. Anti-enumeration: always resolves. |
+| `requestPasswordReset({ email, lang? })` | Trigger a password-reset email. Anti-enumeration. |
+| `changePassword({ current_password?, new_password, confirm_password, token? })` | Authenticated self-change (with `current_password`) or token-based reset. |
+| `deleteAccount({ password?, confirm? })` | Irreversible server delete + local session clear + identity-changed hook. |
+| `initiateOAuth(provider, opts)` | Start an OAuth flow. `mode: "popup"` (default) resolves with the auth result from the popup's `postMessage`; `mode: "redirect"` navigates the top window. |
+| `handleOAuthCallback()` | For `mode: "redirect"` apps, call from your callback route to extract the result from the URL (delegated to `adapter.handleOAuthCallback`). |
+
+Successful identity changes (register-with-autologin, login, OAuth login, logout, deleteAccount) fire the orchestrator's `onIdentityChanged` hook, which resets every owner-scoped domain and re-initializes them with the new context.
+
+---
+
+### `ProfileManager`
+
+Singleton `/me` manager. Attached as `suite.profile`.
+
+| Method | Purpose |
+|---|---|
+| `fetch()` | GET `/me`. Aborts any in-flight fetch (supersede). Patches the session subject in place on success. |
+| `update({ email?, current_password? })` | PUT `/me`. Updates the session subject in place; emits `profile:updated`. |
+| `listOAuth()` | List the account's linked OAuth providers. |
+| `unlinkOAuth(provider)` | DELETE a provider connection; emits `oauth:unlinked`; re-fetches the profile. |
+| `get()` / `subscribe(fn)` | Read / subscribe to `ProfileState` (`{ profile, loading, error }`). |
+| `reset()` / `destroy()` | Abort in-flight fetch; drop state. |
+
+---
+
+### `openOAuthPopup(url, options?)`
+
+Open an OAuth popup and await the server's `postMessage`.
+
+**Parameters:**
+- `url` (`string`) — server OAuth init URL.
+- `options` (`OpenOAuthPopupOptions`, optional)
+  - `options.host` (`PopupWindowHost`, optional) — shim for tests. Default: `globalThis`.
+  - `options.closedPollMs` (`number`, optional) — detect popup-closed-without-message. Default: `500`.
+  - `options.timeoutMs` (`number`, optional) — hard timeout. Default: `0` (disabled).
+  - `options.expectedOrigin` (`string`, optional) — restrict accepted message origins.
+  - `options.features` (`string`, optional) — popup window features string.
+
+**Returns:** `Promise<OAuthPopupMessage>` — resolves with `{ type: "oauth_login_success", jwt, email, roles?, ... }` or `{ type: "oauth_link_success", provider }`. Rejects with `OAUTH_POPUP_BLOCKED` / `OAUTH_POPUP_CLOSED` / `OAUTH_POPUP_TIMEOUT` or the server-supplied error message.
+
+---
+
+## Account-lifecycle types
+
+### `SessionState`
+
+```typescript
+interface SessionState {
+    status: "anonymous" | "authenticated" | "unverified";
+    subject: SessionSubject | null;
+    jwt: string | null;
+    expiresAt: number | null;  // unix seconds
+}
+```
+
+### `SessionSubject`
+
+```typescript
+interface SessionSubject {
+    id: string;
+    email: string;
+    roles: string[];
+    isVerified: boolean;
+    hasPassword: boolean;   // OAuth-only accounts: false
+}
+```
+
+### `SessionStatus` / `SessionStorage` / `SessionStorageType`
+
+```typescript
+type SessionStatus = "anonymous" | "authenticated" | "unverified";
+
+interface SessionStorage {
+    get(key: string): string | null;
+    set(key: string, value: string): void;
+    del(key: string): void;
+}
+
+type SessionStorageType = "local" | "session" | "memory" | SessionStorage;
+```
+
+### `AuthTokenResult`
+
+```typescript
+interface AuthTokenResult {
+    jwt?: string;                    // absent when requiresVerification is true
+    email: string;
+    roles: string[];
+    isVerified?: boolean;
+    validFrom?: number;
+    validUntil?: number;
+    requiresVerification?: boolean;  // server declined auto-login pending verify
+}
+```
+
+### `ProfileResult`
+
+```typescript
+interface ProfileResult {
+    email: string;
+    roles: string[];
+    isVerified: boolean;
+    hasPassword: boolean;
+    oauthConnections: OAuthConnection[];
+}
+```
+
+### `OAuthProvider` / `OAuthAction` / `OAuthInitOptions` / `OAuthConnection`
+
+```typescript
+type OAuthProvider = "google" | "facebook" | "apple" | "twitter";
+type OAuthAction = "login" | "link";
+
+interface OAuthInitOptions {
+    action: OAuthAction;
+    redirect?: string;
+    lang?: string;
+    mode?: "popup" | "redirect";  // default "popup"
+}
+
+interface OAuthConnection {
+    provider: OAuthProvider;
+    display_name?: string;
+    avatar_url?: string;
+    email?: string;
+}
+```
+
+### `AuthAdapter`
+
+```typescript
+interface AuthAdapter {
+    register(input, ctx): Promise<AuthTokenResult>;
+    login(input, ctx): Promise<AuthTokenResult>;
+    logout(ctx): Promise<void>;
+    oauthInitUrl(provider, opts, ctx): string;
+    handleOAuthCallback?(ctx): Promise<AuthTokenResult>;
+    resendVerification(input, ctx): Promise<void>;
+    requestPasswordReset(input, ctx): Promise<void>;
+    changePassword(input, ctx): Promise<void>;
+    deleteAccount(input, ctx): Promise<{ deleted: true }>;
+}
+```
+
+Parameter shapes match [`src/types/auth.ts`](src/types/auth.ts). Implementations forward `ctx.jwt` as `Authorization: Bearer <jwt>` and `ctx.signal` to `fetch()`.
+
+### `ProfileAdapter`
+
+```typescript
+interface ProfileAdapter {
+    get(ctx): Promise<ProfileResult>;
+    update(input: { email?, current_password? }, ctx): Promise<ProfileResult>;
+    listOAuth(ctx): Promise<OAuthConnection[]>;
+    unlinkOAuth(provider, ctx): Promise<void>;
+}
+```
+
+### `StackAccountAdapterOptions`
+
+```typescript
+interface StackAccountAdapterOptions {
+    baseUrl?: string;    // default "/api/account"
+    fetch?: typeof fetch;
+}
+```
+
+### `OpenOAuthPopupOptions` / `PopupWindowHost` / `OAuthPopupMessage`
+
+See [src/oauth/popup.ts](src/oauth/popup.ts) for full definitions. `OAuthPopupMessage` is a union of `OAuthPopupLoginMessage` (`{ type: "oauth_login_success", jwt, email, roles?, ... }`) and `OAuthPopupLinkMessage` (`{ type: "oauth_link_success", provider }`). Errors posted by the server (`{ type: "oauth_error", error }`) cause the promise to reject.
+
+### `MockAuthStore`
+
+```typescript
+interface MockAuthStore {
+    accounts: Map<string, MockAccount>;
+    requireVerifiedEmail: boolean;
+    jwtsByEmail: Map<string, string>;
+}
+```
+
+---
+
+## Account-lifecycle events
+
+Emitted on the shared pubsub. Each payload has a `timestamp` (ms).
+
+| Event | Payload |
+|---|---|
+| `auth:register` | `{ email, requiresVerification }` |
+| `auth:login` | `{ email }` |
+| `auth:logout` | `{ subjectId? }` |
+| `auth:session:changed` | `{ session: SessionState }` |
+| `auth:verification:required` | `{ email }` (fired when status flips to `"unverified"`) |
+| `profile:updated` | `{ email }` |
+| `oauth:linked` | `{ connection: OAuthConnection }` |
+| `oauth:unlinked` | `{ provider: OAuthProvider }` |
