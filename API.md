@@ -360,8 +360,6 @@ interface OwnedRowResult<TRow> {
 }
 ```
 
-Matches `@marianmeres/collection`'s REST envelope.
-
 ### `OwnedCollectionState<TRow>`
 
 ```typescript
@@ -515,7 +513,7 @@ Attached automatically when `adapters.auth` is passed to `createOwnsuite`. See a
 
 ### `createStackAccountAuthAdapter(options?)`
 
-Default `AuthAdapter` pointing at the `@marianmeres/stack-account` REST surface.
+Default `AuthAdapter` pointing at a conventional account REST surface (register / login / logout / OAuth / verify).
 
 **Parameters:**
 - `options` (`StackAccountAdapterOptions`, optional)

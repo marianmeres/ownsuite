@@ -8,10 +8,7 @@ Client-side helper library for owner-scoped UIs. Generic domain managers with op
 
 ## What it does
 
-Ownsuite gives front-end applications a uniform way to read, create, update and delete records from owner-scoped REST endpoints (typically `/me/*`). Each row is implicitly scoped to the authenticated subject by the server — the client never sets `owner_id`. The library pairs with:
-
-- **@marianmeres/collection** — the `ownerIdScope` route hook enforces owner-based filtering on the server.
-- **@marianmeres/stack-common** — the `ownsuiteOptions()` helper wires the server mount.
+Ownsuite gives front-end applications a uniform way to read, create, update and delete records from owner-scoped REST endpoints (typically `/me/*`). Each row is implicitly scoped to the authenticated subject by the server — the client never sets `owner_id`.
 
 ## Features
 
@@ -24,11 +21,11 @@ Ownsuite gives front-end applications a uniform way to read, create, update and 
 - **Event system** — subscribe to list fetches, row CRUD, and lifecycle transitions
 - **Mock adapter** — in-memory fixture for tests, with configurable failure injection and latency
 - **Explicit lifecycle** — `suite.destroy()` aborts in-flight work and releases listeners cleanly
-- **Account lifecycle (opt-in)** — `suite.auth` / `suite.session` / `suite.profile` for register / login / OAuth / verify / logout / profile edit / delete account, wired to pair with `@marianmeres/stack-account` via the bundled default adapters
+- **Account lifecycle (opt-in)** — `suite.auth` / `suite.session` / `suite.profile` for register / login / OAuth / verify / logout / profile edit / delete account, with bundled default adapters for a standard account REST surface
 
 ## Authentication (optional)
 
-Pass an `AuthAdapter` to `createOwnsuite` to attach the account-lifecycle managers. The default adapters target the `@marianmeres/stack-account` REST surface; apps with custom routes can write their own against the `AuthAdapter` / `ProfileAdapter` interfaces exported from this package.
+Pass an `AuthAdapter` to `createOwnsuite` to attach the account-lifecycle managers. The bundled default adapters target a conventional account REST surface (register / login / logout / OAuth / verify / profile CRUD); apps with custom routes can write their own against the `AuthAdapter` / `ProfileAdapter` interfaces exported from this package.
 
 ```typescript
 import {
@@ -58,7 +55,7 @@ suite.session!.subscribe(({ status, subject }) => {
   if (status === "anonymous")    console.log("signed out");
 });
 
-// Register → server requires email verification (default gate in stack-account)
+// Register → server requires email verification by default
 await suite.auth!.register({
   email: "alice@example.com",
   password: "mysecretpassword",
@@ -84,8 +81,8 @@ await suite.profile!.update({
   current_password: "mysecretpassword",
 });
 
-// Logout — revokes JWT server-side (via stack-account's jti deletion) and
-// clears local session storage. Owner-scoped domains reset to initializing.
+// Logout — revokes JWT server-side and clears local session storage.
+// Owner-scoped domains reset to initializing.
 await suite.auth!.logout();
 ```
 
