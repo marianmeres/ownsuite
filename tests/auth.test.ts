@@ -408,6 +408,294 @@ Deno.test("switchIdentity - logging in resets every registered owner-scoped doma
 	}
 });
 
+// ─────────────────────── remember-me / per-login storage ──────────────────
+
+/** Clear every built-in backend so tests start from a known state.
+ *  Deno's `localStorage` is process-persistent, so a prior test leaking
+ *  state here would otherwise poison this one. */
+function clearBuiltInStorages(key = "ownsuite:session") {
+	try {
+		globalThis.localStorage.removeItem(key);
+	} catch { /* not available */ }
+	try {
+		globalThis.sessionStorage.removeItem(key);
+	} catch { /* not available */ }
+}
+
+function rememberSuite(storageKey?: string) {
+	const store = createMockAuthStore({
+		requireVerifiedEmail: false,
+		seed: [{
+			email: "remember@test.com",
+			password: "password",
+			roles: ["user"],
+			isVerified: true,
+			hasPassword: true,
+			oauthConnections: [],
+		}],
+	});
+	return createOwnsuite({
+		adapters: {
+			auth: createMockAuthAdapter(store),
+			profile: createMockProfileAdapter(store),
+		},
+		// Default built-in "local" backend — consumers can flip per login.
+		session: storageKey ? { storageKey } : {},
+	});
+}
+
+Deno.test(
+	"remember - true pins to localStorage and survives fresh construction",
+	async () => {
+		const key = "ownsuite:test:remember-true";
+		clearBuiltInStorages(key);
+		// NB: we deliberately do not `destroy()` the first suite — that is
+		// the "reload" bit. destroy() wipes persisted backends by design,
+		// whereas a real browser reload just drops the JS heap and leaves
+		// Web Storage untouched.
+		const suite = rememberSuite(key);
+		await suite.auth!.login(
+			{ email: "remember@test.com", password: "password" },
+			{ remember: true },
+		);
+		assertEquals(suite.session!.get().status, "authenticated");
+		assertExists(globalThis.localStorage.getItem(key));
+		assertEquals(globalThis.sessionStorage.getItem(key), null);
+
+		// Simulated reload: build a fresh suite against the same backends.
+		const replay = rememberSuite(key);
+		try {
+			assertEquals(replay.session!.get().status, "authenticated");
+			assertEquals(
+				replay.session!.get().subject?.email,
+				"remember@test.com",
+			);
+		} finally {
+			replay.destroy();
+			clearBuiltInStorages(key);
+		}
+	},
+);
+
+Deno.test(
+	"remember - false pins to sessionStorage, localStorage stays clean",
+	async () => {
+		const key = "ownsuite:test:remember-false";
+		clearBuiltInStorages(key);
+		const suite = rememberSuite(key);
+		try {
+			await suite.auth!.login(
+				{ email: "remember@test.com", password: "password" },
+				{ remember: false },
+			);
+			assertEquals(suite.session!.get().status, "authenticated");
+			assertEquals(globalThis.localStorage.getItem(key), null);
+			assertExists(globalThis.sessionStorage.getItem(key));
+		} finally {
+			suite.destroy();
+			clearBuiltInStorages(key);
+		}
+	},
+);
+
+Deno.test(
+	"remember - toggle true → logout → false leaves localStorage clean",
+	async () => {
+		const key = "ownsuite:test:remember-toggle";
+		clearBuiltInStorages(key);
+		const suite = rememberSuite(key);
+		try {
+			await suite.auth!.login(
+				{ email: "remember@test.com", password: "password" },
+				{ remember: true },
+			);
+			assertExists(globalThis.localStorage.getItem(key));
+
+			await suite.auth!.logout();
+			assertEquals(globalThis.localStorage.getItem(key), null);
+			assertEquals(globalThis.sessionStorage.getItem(key), null);
+
+			await suite.auth!.login(
+				{ email: "remember@test.com", password: "password" },
+				{ remember: false },
+			);
+			assertEquals(
+				globalThis.localStorage.getItem(key),
+				null,
+				"localStorage must stay clean after toggle-off",
+			);
+			assertExists(globalThis.sessionStorage.getItem(key));
+		} finally {
+			suite.destroy();
+			clearBuiltInStorages(key);
+		}
+	},
+);
+
+Deno.test(
+	"remember - hydration prefers localStorage and wipes sessionStorage",
+	() => {
+		const key = "ownsuite:test:remember-precedence";
+		clearBuiltInStorages(key);
+		const storedLocal = {
+			status: "authenticated",
+			subject: {
+				id: "u-local",
+				email: "local@test.com",
+				roles: [],
+				isVerified: true,
+				hasPassword: true,
+			},
+			jwt: "local-jwt",
+			expiresAt: null,
+		};
+		const storedSession = {
+			status: "authenticated",
+			subject: {
+				id: "u-session",
+				email: "session@test.com",
+				roles: [],
+				isVerified: true,
+				hasPassword: true,
+			},
+			jwt: "session-jwt",
+			expiresAt: null,
+		};
+		globalThis.localStorage.setItem(key, JSON.stringify(storedLocal));
+		globalThis.sessionStorage.setItem(key, JSON.stringify(storedSession));
+
+		const store = createMockAuthStore();
+		const suite = createOwnsuite({
+			adapters: {
+				auth: createMockAuthAdapter(store),
+				profile: createMockProfileAdapter(store),
+			},
+			session: { storageKey: key },
+		});
+		try {
+			assertEquals(suite.session!.get().jwt, "local-jwt");
+			assertEquals(
+				suite.session!.get().subject?.email,
+				"local@test.com",
+			);
+			assertEquals(
+				globalThis.sessionStorage.getItem(key),
+				null,
+				"losing backend must be wiped on adoption",
+			);
+		} finally {
+			suite.destroy();
+			clearBuiltInStorages(key);
+		}
+	},
+);
+
+Deno.test(
+	"remember - custom SessionStorage: remember flag is silently ignored",
+	async () => {
+		const writes: string[] = [];
+		const storage: SessionStorage = (() => {
+			const map = new Map<string, string>();
+			return {
+				get: (k) => map.get(k) ?? null,
+				set: (k, v) => {
+					writes.push(k);
+					map.set(k, v);
+				},
+				del: (k) => {
+					map.delete(k);
+				},
+			};
+		})();
+		// Pre-clear built-ins to prove they're never touched.
+		clearBuiltInStorages();
+		const store = createMockAuthStore({
+			requireVerifiedEmail: false,
+			seed: [{
+				email: "custom@test.com",
+				password: "password",
+				roles: ["user"],
+				isVerified: true,
+				hasPassword: true,
+				oauthConnections: [],
+			}],
+		});
+		const suite = createOwnsuite({
+			adapters: {
+				auth: createMockAuthAdapter(store),
+				profile: createMockProfileAdapter(store),
+			},
+			session: { storage },
+		});
+		try {
+			await suite.auth!.login(
+				{ email: "custom@test.com", password: "password" },
+				{ remember: true },
+			);
+			await suite.auth!.logout();
+			await suite.auth!.login(
+				{ email: "custom@test.com", password: "password" },
+				{ remember: false },
+			);
+			// Neither built-in backend should have been written to.
+			assertEquals(
+				globalThis.localStorage.getItem("ownsuite:session"),
+				null,
+			);
+			assertEquals(
+				globalThis.sessionStorage.getItem("ownsuite:session"),
+				null,
+			);
+			if (writes.length === 0) {
+				throw new Error("custom storage was never written to");
+			}
+		} finally {
+			suite.destroy();
+		}
+	},
+);
+
+Deno.test(
+	"remember - clear() wipes every built-in backend",
+	() => {
+		const key = "ownsuite:test:remember-clear";
+		clearBuiltInStorages(key);
+		const payload = JSON.stringify({
+			status: "authenticated",
+			subject: {
+				id: "u",
+				email: "stale@test.com",
+				roles: [],
+				isVerified: true,
+				hasPassword: true,
+			},
+			jwt: "stale-jwt",
+			expiresAt: null,
+		});
+		globalThis.localStorage.setItem(key, payload);
+		globalThis.sessionStorage.setItem(key, payload);
+
+		const store = createMockAuthStore();
+		const suite = createOwnsuite({
+			adapters: {
+				auth: createMockAuthAdapter(store),
+				profile: createMockProfileAdapter(store),
+			},
+			session: { storageKey: key },
+		});
+		try {
+			// Hydration will have already wiped sessionStorage in favor of
+			// localStorage. clear() wipes localStorage too.
+			suite.session!.clear();
+			assertEquals(globalThis.localStorage.getItem(key), null);
+			assertEquals(globalThis.sessionStorage.getItem(key), null);
+		} finally {
+			suite.destroy();
+			clearBuiltInStorages(key);
+		}
+	},
+);
+
 // ─────────────────────── delete account ────────────────────────────────────
 
 Deno.test("auth.deleteAccount - clears session locally after success", async () => {

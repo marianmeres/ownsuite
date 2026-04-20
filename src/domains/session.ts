@@ -25,6 +25,13 @@ import type {
 
 const DEFAULT_STORAGE_KEY = "ownsuite:session";
 
+type BuiltInStorageType = "local" | "session" | "memory";
+const BUILT_IN_ORDER: readonly BuiltInStorageType[] = [
+	"local",
+	"session",
+	"memory",
+];
+
 const EMPTY: SessionState = {
 	status: "anonymous",
 	subject: null,
@@ -100,60 +107,118 @@ export interface SessionManagerOptions {
 /**
  * Session manager — pure reactive state + persistence, no HTTP.
  *
- * Writes are driven by the AuthManager. On construction it hydrates from
- * storage; if the stored JWT has expired, it transitions to anonymous and
- * clears the storage.
+ * Writes are driven by the AuthManager. On construction it hydrates by
+ * probing the built-in backends in order `local → session → memory` and
+ * adopting whichever holds a non-expired payload as the active backend for
+ * the rest of the instance's lifetime (until `clear()`). Stale blobs on the
+ * other built-in backends are wiped on adoption.
+ *
+ * When constructed with a custom `SessionStorage` object, there is a single
+ * backend and per-login `remember` choices are silently ignored.
  */
 export class SessionManager {
 	readonly #store: StoreLike<SessionState>;
 	readonly #pubsub: PubSub;
-	readonly #storage: SessionStorage;
 	readonly #storageKey: string;
+	/** Set only when the consumer passed a `SessionStorage` object at
+	 *  construction — then there is one backend and no toggling. */
+	readonly #customStorage: SessionStorage | null;
+	/** Resolved eagerly in the string-storage case so `clear()` can wipe
+	 *  every backend and per-login overrides can switch between them. */
+	readonly #builtIn: Record<BuiltInStorageType, SessionStorage> | null;
+	readonly #defaultStorageType: BuiltInStorageType;
+	#activeStorage: SessionStorage;
+	#activeStorageType: BuiltInStorageType | "custom";
 
 	constructor(options: SessionManagerOptions = {}) {
 		this.#pubsub = options.pubsub ?? createPubSub();
-		this.#storage = resolveSessionStorage(options.storage ?? "local");
 		this.#storageKey = options.storageKey ?? DEFAULT_STORAGE_KEY;
 		this.#store = createStore<SessionState>({ ...EMPTY });
+
+		const configured = options.storage ?? "local";
+		if (typeof configured === "object" && configured !== null) {
+			this.#customStorage = configured;
+			this.#builtIn = null;
+			this.#defaultStorageType = "local";
+			this.#activeStorage = configured;
+			this.#activeStorageType = "custom";
+		} else {
+			this.#customStorage = null;
+			this.#builtIn = {
+				local: resolveSessionStorage("local"),
+				session: resolveSessionStorage("session"),
+				memory: createMemorySessionStorage(),
+			};
+			this.#defaultStorageType = configured;
+			this.#activeStorage = this.#builtIn[configured];
+			this.#activeStorageType = configured;
+		}
+
 		this.#hydrate();
 	}
 
-	/** Read from storage and populate the store. Expired sessions are wiped. */
-	#hydrate(): void {
-		const raw = this.#storage.get(this.#storageKey);
-		if (!raw) return;
+	/** Try to parse a payload and validate shape + expiry. Returns the state
+	 *  on success, or `null` (and deletes the stored blob) on any failure. */
+	#readCandidate(storage: SessionStorage): SessionState | null {
+		const raw = storage.get(this.#storageKey);
+		if (!raw) return null;
 		try {
 			const parsed = JSON.parse(raw) as SessionState;
-			// Basic shape check.
 			if (
 				typeof parsed !== "object" ||
 				parsed === null ||
 				typeof parsed.status !== "string"
 			) {
-				this.#storage.del(this.#storageKey);
-				return;
+				storage.del(this.#storageKey);
+				return null;
 			}
-			// Expiry check (only meaningful when expiresAt is set).
 			if (
 				parsed.expiresAt !== null &&
 				parsed.expiresAt !== undefined &&
 				parsed.expiresAt * 1000 <= Date.now()
 			) {
-				this.#storage.del(this.#storageKey);
-				return;
+				storage.del(this.#storageKey);
+				return null;
 			}
-			this.#store.set(parsed);
+			return parsed;
 		} catch {
-			this.#storage.del(this.#storageKey);
+			storage.del(this.#storageKey);
+			return null;
+		}
+	}
+
+	/** Read from storage and populate the store. Expired sessions are wiped.
+	 *  In the built-in case, probes `local → session → memory` and wipes
+	 *  the losing backends so stale blobs can't leak back in. */
+	#hydrate(): void {
+		if (this.#customStorage) {
+			const parsed = this.#readCandidate(this.#customStorage);
+			if (parsed) this.#store.set(parsed);
+			return;
+		}
+
+		const builtIn = this.#builtIn!;
+		for (const type of BUILT_IN_ORDER) {
+			const parsed = this.#readCandidate(builtIn[type]);
+			if (!parsed) continue;
+			// Adopt this backend; wipe the others so a later login-with-toggle
+			// can't accidentally re-hydrate a stale blob.
+			for (const other of BUILT_IN_ORDER) {
+				if (other !== type) builtIn[other].del(this.#storageKey);
+			}
+			this.#activeStorage = builtIn[type];
+			this.#activeStorageType = type;
+			this.#store.set(parsed);
+			return;
 		}
 	}
 
 	#persist(): void {
 		const s = this.#store.get();
 		if (s.status === "anonymous") {
-			this.#storage.del(this.#storageKey);
+			this.#activeStorage.del(this.#storageKey);
 		} else {
-			this.#storage.set(this.#storageKey, JSON.stringify(s));
+			this.#activeStorage.set(this.#storageKey, JSON.stringify(s));
 		}
 	}
 
@@ -193,13 +258,36 @@ export class SessionManager {
 	}
 
 	/** Transition to authenticated. Called after login/register/OAuth succeed
-	 *  and the subject has been loaded. */
+	 *  and the subject has been loaded.
+	 *
+	 *  When `opts.storage` is one of `"local"` / `"session"` / `"memory"`,
+	 *  pins this session to that built-in backend; subsequent
+	 *  `patchSubject` / `setUnverified` writes land on the same backend.
+	 *  The previously-active backend's blob is wiped as part of the switch
+	 *  so "Remember me" toggles don't leave stale data behind.
+	 *
+	 *  Ignored when the manager was constructed with a custom `SessionStorage`
+	 *  object (single backend) or when `opts.storage` is itself an object
+	 *  (no multi-backend custom storage by design). */
 	setAuthenticated(opts: {
 		jwt: string;
 		subject: SessionSubject;
 		expiresAt?: number | null;
+		storage?: SessionStorageType;
 	}): void {
-		const { jwt, subject, expiresAt = null } = opts;
+		const { jwt, subject, expiresAt = null, storage } = opts;
+		if (
+			storage !== undefined &&
+			typeof storage === "string" &&
+			this.#builtIn
+		) {
+			const target = storage as BuiltInStorageType;
+			if (this.#activeStorage !== this.#builtIn[target]) {
+				this.#activeStorage.del(this.#storageKey);
+				this.#activeStorage = this.#builtIn[target];
+				this.#activeStorageType = target;
+			}
+		}
 		this.#store.set({
 			status: "authenticated",
 			subject,
@@ -230,13 +318,31 @@ export class SessionManager {
 		this.#emitChange();
 	}
 
-	/** Drop the session. Storage is cleared; downstream domains should be
-	 *  reset by the suite orchestrator. */
+	/** Drop the session. Every built-in backend (local + session + memory)
+	 *  is wiped — not just the active one — so stale blobs from a previous
+	 *  "Remember me" toggle can't leak back in on the next construction.
+	 *  Resets the active backend to the manager's configured default.
+	 *  Downstream domains should be reset by the suite orchestrator. */
 	clear(): void {
+		this.#wipeAllBackends();
+		if (this.#builtIn) {
+			this.#activeStorage = this.#builtIn[this.#defaultStorageType];
+			this.#activeStorageType = this.#defaultStorageType;
+		}
 		if (this.#store.get().status === "anonymous") return;
 		this.#store.set({ ...EMPTY });
-		this.#persist();
 		this.#emitChange();
+	}
+
+	#wipeAllBackends(): void {
+		if (this.#customStorage) {
+			this.#customStorage.del(this.#storageKey);
+			return;
+		}
+		const builtIn = this.#builtIn!;
+		for (const type of BUILT_IN_ORDER) {
+			builtIn[type].del(this.#storageKey);
+		}
 	}
 
 	/** Patch the subject in place without touching the JWT. Used when the
@@ -253,10 +359,10 @@ export class SessionManager {
 		this.#emitChange();
 	}
 
-	/** Test / reset hook — clears storage AND in-memory state without
+	/** Test / reset hook — clears every backend AND in-memory state without
 	 *  emitting. Used by teardown. */
 	destroy(): void {
-		this.#storage.del(this.#storageKey);
+		this.#wipeAllBackends();
 		this.#store.set({ ...EMPTY });
 	}
 }

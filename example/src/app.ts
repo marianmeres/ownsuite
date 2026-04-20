@@ -28,6 +28,7 @@ const emailEl = $<HTMLInputElement>("email");
 const passwordEl = $<HTMLInputElement>("password");
 const newPasswordEl = $<HTMLInputElement>("newPassword");
 const providerEl = $<HTMLSelectElement>("provider");
+const rememberEl = $<HTMLInputElement>("remember");
 const sessionEl = $<HTMLPreElement>("session");
 const logEl = $<HTMLDivElement>("log");
 
@@ -123,18 +124,24 @@ $("register").addEventListener("click", () => {
 	const s = requireSuite();
 	if (!s) return;
 	run("register", () =>
-		s.auth!.register({
-			email: emailEl.value,
-			password: passwordEl.value,
-			password_confirm: passwordEl.value,
-		}));
+		s.auth!.register(
+			{
+				email: emailEl.value,
+				password: passwordEl.value,
+				password_confirm: passwordEl.value,
+			},
+			{ remember: rememberEl.checked },
+		));
 });
 
 $("login").addEventListener("click", () => {
 	const s = requireSuite();
 	if (!s) return;
 	run("login", () =>
-		s.auth!.login({ email: emailEl.value, password: passwordEl.value }));
+		s.auth!.login(
+			{ email: emailEl.value, password: passwordEl.value },
+			{ remember: rememberEl.checked },
+		));
 });
 
 $("logout").addEventListener("click", () => {
@@ -214,6 +221,7 @@ $("oauthLogin").addEventListener("click", () => {
 		s.auth!.initiateOAuth(providerEl.value as OAuthProvider, {
 			action: "login",
 			mode: "popup",
+			remember: rememberEl.checked,
 		}));
 });
 

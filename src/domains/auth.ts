@@ -14,12 +14,14 @@
 
 import { createPubSub, type PubSub } from "@marianmeres/pubsub";
 import type {
+	AuthActionOptions,
 	AuthAdapter,
 	AuthTokenResult,
 	OAuthInitOptions,
 	OAuthProvider,
 	OwnsuiteContext,
 	ProfileAdapter,
+	SessionStorageType,
 	SessionSubject,
 } from "../types/mod.ts";
 import { openOAuthPopup } from "../oauth/popup.ts";
@@ -87,8 +89,16 @@ export class AuthManager {
 	 *  present, we pull the profile to build a complete subject. When the
 	 *  server returned requiresVerification, we surface the "unverified"
 	 *  status without any profile fetch. Triggers identity-change hook on
-	 *  actual login. */
-	async #applyAuthResult(result: AuthTokenResult): Promise<AuthTokenResult> {
+	 *  actual login.
+	 *
+	 *  `remember` translates to a per-login storage pin on the session:
+	 *  `true` → `"local"`, `false` → `"session"`, `undefined` → session
+	 *  manager's configured default. Silently no-op in the verification-gate
+	 *  branch (no JWT yet → nothing to persist). */
+	async #applyAuthResult(
+		result: AuthTokenResult,
+		remember?: boolean,
+	): Promise<AuthTokenResult> {
 		if (result.requiresVerification || !result.jwt) {
 			this.#session.setUnverified(result.email);
 			this.#pubsub.publish("auth:verification:required", {
@@ -108,10 +118,16 @@ export class AuthManager {
 			isVerified: result.isVerified ?? false,
 			hasPassword: true, // corrected by profile fetch below
 		};
+		const storage: SessionStorageType | undefined = remember === true
+			? "local"
+			: remember === false
+			? "session"
+			: undefined;
 		this.#session.setAuthenticated({
 			jwt: result.jwt,
 			subject: provisional,
 			expiresAt: result.validUntil ?? null,
+			...(storage ? { storage } : {}),
 		});
 
 		// Best-effort hydrate the subject from /me. If this fails we keep the
@@ -135,13 +151,16 @@ export class AuthManager {
 
 	// ─────────────────────── verbs ──────────────────────────────────────────
 
-	async register(input: {
-		email: string;
-		password: string;
-		password_confirm: string;
-		roles?: string[];
-		extras?: Record<string, unknown>;
-	}): Promise<AuthTokenResult> {
+	async register(
+		input: {
+			email: string;
+			password: string;
+			password_confirm: string;
+			roles?: string[];
+			extras?: Record<string, unknown>;
+		},
+		options?: AuthActionOptions,
+	): Promise<AuthTokenResult> {
 		const result = await this.#adapter.register(input, this.#ctx());
 		this.#pubsub.publish("auth:register", {
 			type: "auth:register",
@@ -149,20 +168,23 @@ export class AuthManager {
 			email: input.email,
 			requiresVerification: Boolean(result.requiresVerification),
 		});
-		return await this.#applyAuthResult(result);
+		return await this.#applyAuthResult(result, options?.remember);
 	}
 
-	async login(input: {
-		email: string;
-		password: string;
-	}): Promise<AuthTokenResult> {
+	async login(
+		input: {
+			email: string;
+			password: string;
+		},
+		options?: AuthActionOptions,
+	): Promise<AuthTokenResult> {
 		const result = await this.#adapter.login(input, this.#ctx());
 		this.#pubsub.publish("auth:login", {
 			type: "auth:login",
 			timestamp: Date.now(),
 			email: input.email,
 		});
-		return await this.#applyAuthResult(result);
+		return await this.#applyAuthResult(result, options?.remember);
 	}
 
 	async logout(): Promise<void> {
@@ -273,18 +295,22 @@ export class AuthManager {
 			roles: message.roles ?? [],
 			isVerified: true,
 		};
-		return await this.#applyAuthResult(result);
+		return await this.#applyAuthResult(result, opts.remember);
 	}
 
 	/** For the redirect-mode callback page: delegate to the adapter if
-	 *  available to extract the result from the current URL/page state. */
-	async handleOAuthCallback(): Promise<AuthTokenResult | void> {
+	 *  available to extract the result from the current URL/page state.
+	 *  `options.remember` pins the resulting session to local/session
+	 *  storage — pass the same value the user picked before the redirect. */
+	async handleOAuthCallback(
+		options?: AuthActionOptions,
+	): Promise<AuthTokenResult | void> {
 		if (!this.#adapter.handleOAuthCallback) {
 			throw new Error(
 				"AuthManager: handleOAuthCallback is not implemented by the adapter",
 			);
 		}
 		const result = await this.#adapter.handleOAuthCallback(this.#ctx());
-		return await this.#applyAuthResult(result);
+		return await this.#applyAuthResult(result, options?.remember);
 	}
 }

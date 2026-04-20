@@ -593,9 +593,11 @@ Current JWT, or `null` when anonymous.
 
 Shorthand reads.
 
-#### `session.setAuthenticated({ jwt, subject, expiresAt? })`
+#### `session.setAuthenticated({ jwt, subject, expiresAt?, storage? })`
 
 Enter the `authenticated` state. Normally called by `AuthManager`, not consumers.
+
+- `storage` (`SessionStorageType`, optional) — per-login storage pin. When `"local"` / `"session"` / `"memory"`, switches the active built-in backend for this session (and for subsequent `patchSubject` / `setUnverified` writes). The previously-active built-in backend's blob is wiped as part of the switch so "Remember me" toggles don't leave stale data. Silently ignored when the manager was constructed with a custom `SessionStorage` object, or when the override is itself an object.
 
 #### `session.setUnverified(email)` / `session.clear()` / `session.patchSubject(patch)`
 
@@ -613,15 +615,15 @@ Verbs only. Attached as `suite.auth`. No state of its own — results flow into 
 
 | Method | Purpose |
 |---|---|
-| `register({ email, password, password_confirm, roles?, extras? })` | Create account. Returns an `AuthTokenResult`. When the server's verification gate is on, the result carries `requiresVerification: true` and the session flips to `"unverified"` — no JWT yet. |
-| `login({ email, password })` | Exchange credentials for a JWT. Session flips to `"authenticated"` on success, `"unverified"` if the server reports the gate. |
+| `register({ email, password, password_confirm, roles?, extras? }, options?)` | Create account. Returns an `AuthTokenResult`. When the server's verification gate is on, the result carries `requiresVerification: true` and the session flips to `"unverified"` — no JWT yet. `options.remember` pins the resulting session to `localStorage` (`true`) or `sessionStorage` (`false`); omit to use the `SessionManager` default. |
+| `login({ email, password }, options?)` | Exchange credentials for a JWT. Session flips to `"authenticated"` on success, `"unverified"` if the server reports the gate. `options.remember` selects per-login storage (see `register`). |
 | `logout()` | Best-effort server revoke + local clear. Idempotent. |
 | `resendVerification({ email, lang? })` | Trigger a fresh verification email. Anti-enumeration: always resolves. |
 | `requestPasswordReset({ email, lang? })` | Trigger a password-reset email. Anti-enumeration. |
 | `changePassword({ current_password?, new_password, confirm_password, token? })` | Authenticated self-change (with `current_password`) or token-based reset. |
 | `deleteAccount({ password?, confirm? })` | Irreversible server delete + local session clear + identity-changed hook. |
-| `initiateOAuth(provider, opts)` | Start an OAuth flow. `mode: "popup"` (default) resolves with the auth result from the popup's `postMessage`; `mode: "redirect"` navigates the top window. |
-| `handleOAuthCallback()` | For `mode: "redirect"` apps, call from your callback route to extract the result from the URL (delegated to `adapter.handleOAuthCallback`). |
+| `initiateOAuth(provider, opts)` | Start an OAuth flow. `mode: "popup"` (default) resolves with the auth result from the popup's `postMessage`; `mode: "redirect"` navigates the top window. `opts.remember` pins the resulting session's storage backend (only meaningful for `action: "login"`). |
+| `handleOAuthCallback(options?)` | For `mode: "redirect"` apps, call from your callback route to extract the result from the URL (delegated to `adapter.handleOAuthCallback`). `options.remember` pins the resulting session's storage — pass the same value the user picked before the redirect. |
 
 Successful identity changes (register-with-autologin, login, OAuth login, logout, deleteAccount) fire the orchestrator's `onIdentityChanged` hook, which resets every owner-scoped domain and re-initializes them with the new context.
 
@@ -735,6 +737,14 @@ interface OAuthInitOptions {
     redirect?: string;
     lang?: string;
     mode?: "popup" | "redirect";  // default "popup"
+    remember?: boolean;           // same semantics as AuthActionOptions.remember
+}
+
+interface AuthActionOptions {
+    /** true → localStorage; false → sessionStorage; undefined → default.
+     *  Ignored when SessionManager was constructed with a custom
+     *  SessionStorage object. */
+    remember?: boolean;
 }
 
 interface OAuthConnection {

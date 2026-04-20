@@ -93,6 +93,27 @@ export interface OAuthInitOptions {
 	 *  whether to open a popup and wait for a postMessage, or redirect the
 	 *  top window. */
 	mode?: "popup" | "redirect";
+	/** Same semantics as {@link AuthActionOptions.remember} — pins the
+	 *  resulting session to `localStorage` (`true`) or `sessionStorage`
+	 *  (`false`). Only meaningful for `action: "login"`. */
+	remember?: boolean;
+}
+
+/**
+ * Options accepted by `AuthManager.login` / `register` /
+ * `handleOAuthCallback` to express per-login storage preference
+ * ("Remember me").
+ */
+export interface AuthActionOptions {
+	/** `true` → persist the resulting session to `localStorage` (survives
+	 *  browser restart).
+	 *  `false` → persist to `sessionStorage` (dies with the tab).
+	 *  `undefined` → use the `SessionManager`'s configured default backend.
+	 *
+	 *  Silently ignored when the `SessionManager` was constructed with a
+	 *  custom `SessionStorage` object — the single custom backend is used
+	 *  regardless. */
+	remember?: boolean;
 }
 
 // ─────────────────────── auth result shapes ────────────────────────────────

@@ -67,7 +67,10 @@ await suite.auth!.register({
 // suite.session!.get().status === "unverified"
 
 // After the user clicks the email link and the server flips isVerified:
-await suite.auth!.login({ email: "alice@example.com", password: "mysecretpassword" });
+await suite.auth!.login(
+  { email: "alice@example.com", password: "mysecretpassword" },
+  { remember: true }, // true → localStorage; false → sessionStorage (per-login override)
+);
 // suite.session!.get().status === "authenticated"
 // Every registered owner-scoped domain is re-initialized with the new JWT.
 
@@ -86,7 +89,7 @@ await suite.profile!.update({
 await suite.auth!.logout();
 ```
 
-Session state is persisted through a pluggable `SessionStorage` backend (`"local"` / `"session"` / `"memory"` / custom object with `get`/`set`/`del`). Expired stored sessions are discarded on construction so a reload after the JWT lapses starts anonymous.
+Session state is persisted through a pluggable `SessionStorage` backend (`"local"` / `"session"` / `"memory"` / custom object with `get`/`set`/`del`). Expired stored sessions are discarded on construction so a reload after the JWT lapses starts anonymous. With a built-in string backend, hydration probes `local → session → memory` and adopts whichever holds a non-expired payload — the per-login `remember` flag on `auth.login` / `auth.register` / `auth.initiateOAuth` (`true` → `localStorage`, `false` → `sessionStorage`) switches the active backend for that session, and `session.clear()` wipes all built-in backends so toggles can't leak stale data.
 
 Tests can use the in-memory mock adapters (`createMockAuthAdapter`, `createMockProfileAdapter`, `createMockAuthStore`, `verifyMockAccount`) and the injectable popup host for deterministic OAuth dances.
 
