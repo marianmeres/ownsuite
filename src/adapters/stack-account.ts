@@ -120,10 +120,86 @@ interface ServerAuthResponse {
 		email: string;
 		roles: string[];
 		isVerified?: boolean;
-		validFrom?: number;
-		validUntil?: number;
+		/** The stack-account server emits this as an ISO-8601 string (older /
+		 *  other server shapes may send a number). Either way it is normalized
+		 *  to epoch seconds by {@link normalizeAuthResult} before it reaches the
+		 *  domain layer — do NOT treat it as numeric here. */
+		validFrom?: string | number;
+		/** ISO-8601 string (or number) — see {@link validFrom}. Normalized to
+		 *  epoch seconds for {@link AuthTokenResult.validUntil}. */
+		validUntil?: string | number;
 		requiresVerification?: boolean;
 		ok?: boolean;
+	};
+}
+
+/**
+ * Coerce a server-provided validity marker to **epoch seconds**.
+ *
+ * `AuthTokenResult.validFrom` / `validUntil` are typed (and consumed
+ * downstream — notably the session-expiry check) as numeric epoch seconds, but
+ * the stack-account server sends ISO-8601 strings. Blind-casting the wire shape
+ * lands a string in a numeric field, which silently breaks `expiresAt * 1000`
+ * arithmetic (`NaN`, so an expired session never expires). This bridges the two
+ * tolerantly:
+ *   - ISO-8601 string   → parsed to epoch seconds
+ *   - epoch-seconds num  → returned as-is
+ *   - epoch-ms num       → divided down (heuristic: `> 1e12` ⇒ milliseconds)
+ *   - null / undefined / unparseable → `undefined`
+ */
+function toEpochSeconds(v: unknown): number | undefined {
+	if (typeof v === "number" && Number.isFinite(v)) {
+		return v > 1e12 ? Math.floor(v / 1000) : v;
+	}
+	if (typeof v === "string") {
+		const ms = Date.parse(v);
+		return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
+	}
+	return undefined;
+}
+
+/** Best-effort read of a JWT payload's numeric `exp` claim (epoch seconds).
+ *  The signature is NOT verified — the server is authoritative; this only
+ *  reads the expiry of an already-trusted token as a fallback when the
+ *  server's `validUntil` is missing or unparseable. Returns `undefined` for a
+ *  malformed / non-JWT string so callers degrade gracefully. */
+function jwtExpSeconds(jwt: string | undefined): number | undefined {
+	if (!jwt) return undefined;
+	const parts = jwt.split(".");
+	if (parts.length < 2) return undefined;
+	try {
+		const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+		const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+		const bytes = Uint8Array.from(atob(b64 + pad), (c) => c.charCodeAt(0));
+		const payload = JSON.parse(new TextDecoder().decode(bytes)) as {
+			exp?: unknown;
+		};
+		return toEpochSeconds(payload.exp);
+	} catch {
+		return undefined;
+	}
+}
+
+/** Translate the stack-account wire payload into ownsuite's
+ *  {@link AuthTokenResult}, converting `validFrom` / `validUntil` (ISO string
+ *  or numeric) to epoch seconds. Prefers the server's `validUntil`; falls back
+ *  to the JWT's own `exp` claim when `validUntil` is absent or unparseable, so
+ *  a malformed validity field can never produce an immortal client session.
+ *  Replaces the previous blind `r.data as AuthTokenResult` cast. */
+function normalizeAuthResult(
+	data: ServerAuthResponse["data"],
+): AuthTokenResult {
+	const validFrom = toEpochSeconds(data.validFrom);
+	const validUntil = toEpochSeconds(data.validUntil) ??
+		jwtExpSeconds(data.jwt);
+	return {
+		jwt: data.jwt,
+		email: data.email,
+		roles: data.roles ?? [],
+		isVerified: data.isVerified,
+		requiresVerification: data.requiresVerification,
+		...(validFrom !== undefined ? { validFrom } : {}),
+		...(validUntil !== undefined ? { validUntil } : {}),
 	};
 }
 
@@ -148,7 +224,7 @@ export function createStackAccountAuthAdapter(
 				input,
 				ctx,
 			);
-			return r.data as AuthTokenResult;
+			return normalizeAuthResult(r.data);
 		},
 
 		async login(input, ctx) {
@@ -158,7 +234,7 @@ export function createStackAccountAuthAdapter(
 				input,
 				ctx,
 			);
-			return r.data as AuthTokenResult;
+			return normalizeAuthResult(r.data);
 		},
 
 		async logout(ctx) {

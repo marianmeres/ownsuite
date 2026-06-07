@@ -97,6 +97,58 @@ Deno.test("session - expired stored session is discarded", () => {
 	}
 });
 
+Deno.test("session - future numeric expiresAt survives hydration", () => {
+	const storage = createMemorySessionStorage();
+	const future = Math.floor(Date.now() / 1000) + 3600;
+	storage.set(
+		"ownsuite:session",
+		JSON.stringify({
+			status: "authenticated",
+			subject: { id: "u1", email: "x", roles: [], isVerified: true, hasPassword: true },
+			jwt: "good-jwt",
+			expiresAt: future,
+		}),
+	);
+	const store = createMockAuthStore();
+	const suite = createOwnsuite({
+		adapters: { auth: createMockAuthAdapter(store) },
+		session: { storage },
+	});
+	try {
+		assertEquals(suite.session!.get().status, "authenticated");
+		assertEquals(suite.session!.get().expiresAt, future);
+	} finally {
+		suite.destroy();
+	}
+});
+
+Deno.test("session - string (non-finite) expiresAt is treated as expired and wiped", () => {
+	// Guards the exact bug: an ISO string laundered into the numeric expiresAt
+	// field made `expiresAt * 1000` NaN, so the expired branch was never taken
+	// and the stale session lived forever. Must now fail-closed → anonymous.
+	const storage = createMemorySessionStorage();
+	storage.set(
+		"ownsuite:session",
+		JSON.stringify({
+			status: "authenticated",
+			subject: { id: "u1", email: "x", roles: [], isVerified: true, hasPassword: true },
+			jwt: "stale-jwt",
+			expiresAt: "2020-01-01T00:00:00.000Z",
+		}),
+	);
+	const store = createMockAuthStore();
+	const suite = createOwnsuite({
+		adapters: { auth: createMockAuthAdapter(store) },
+		session: { storage },
+	});
+	try {
+		assertEquals(suite.session!.get().status, "anonymous");
+		assertEquals(storage.get("ownsuite:session"), null);
+	} finally {
+		suite.destroy();
+	}
+});
+
 Deno.test("session - custom storage.get/set/del are exercised on writes", () => {
 	const calls: string[] = [];
 	const storage: SessionStorage = {

@@ -176,13 +176,18 @@ export class SessionManager {
 				storage.del(this.#storageKey);
 				return null;
 			}
-			if (
-				parsed.expiresAt !== null &&
-				parsed.expiresAt !== undefined &&
-				parsed.expiresAt * 1000 <= Date.now()
-			) {
-				storage.del(this.#storageKey);
-				return null;
+			if (parsed.expiresAt !== null && parsed.expiresAt !== undefined) {
+				// Fail-closed: `expiresAt` MUST be finite epoch seconds. A
+				// present-but-non-finite value (e.g. an ISO string laundered
+				// through a buggy adapter) is treated as expired and wiped,
+				// rather than yielding `NaN <= now === false` → immortal session.
+				const exp = typeof parsed.expiresAt === "number"
+					? parsed.expiresAt
+					: NaN;
+				if (!Number.isFinite(exp) || exp * 1000 <= Date.now()) {
+					storage.del(this.#storageKey);
+					return null;
+				}
 			}
 			return parsed;
 		} catch {
