@@ -1,100 +1,177 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>@marianmeres/ownsuite — account lifecycle reference</title>
-<style>
-	body { font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; margin: 1rem; }
-	h1 { font-size: 1rem; margin: 0 0 .75rem; }
-	h2 { font-size: .9rem; margin: 0 0 .25rem; }
-	p { margin: 0 0 .75rem; color: #555; }
-	fieldset { border: 1px solid #888; margin: 0 0 .5rem; padding: .5rem .75rem; }
-	legend { padding: 0 .3rem; color: #333; }
-	label { display: inline-block; width: 8.5rem; }
-	input, select { font: inherit; padding: .15rem .3rem; margin: .1rem 0; }
-	button { font: inherit; margin: .2rem .2rem .2rem 0; padding: .2rem .55rem; cursor: pointer; }
-	.row { display: flex; gap: 1rem; margin-top: .5rem; align-items: flex-start; }
-	.col-session { flex: 0 0 25%; min-width: 0; }
-	.col-log { flex: 1 1 auto; min-width: 0; }
-	pre { background: #f4f4f4; padding: .5rem; margin: 0; max-height: 22vh; overflow: auto; white-space: pre-wrap; border: 1px solid #ddd; }
-	#session { background: #eef; }
-	#log { background: #fafafa; border: 1px solid #ddd; padding: .25rem .5rem; height: 40vh; overflow: auto; }
-	#log > div { white-space: pre-wrap; word-break: break-word; border-top: 1px dotted #ccc; padding: .15rem 0; }
-	#log > div:first-child { border-top: 0; }
-</style>
-</head>
-<body>
-<h1>@marianmeres/ownsuite — account lifecycle reference</h1>
-<p>
-	Point at a compatible <code>@marianmeres/stack-account</code> server,
-	click <b>initialize</b>, exercise every verb. Server URL persists in
-	<code>localStorage</code>. Nothing fancy by design.
-</p>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>@marianmeres/ownsuite — account lifecycle reference</title>
+		<style>
+			body {
+				font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+				margin: 1rem;
+			}
+			h1 {
+				font-size: 1rem;
+				margin: 0 0 0.75rem;
+			}
+			h2 {
+				font-size: 0.9rem;
+				margin: 0 0 0.25rem;
+			}
+			p {
+				margin: 0 0 0.75rem;
+				color: #555;
+			}
+			fieldset {
+				border: 1px solid #888;
+				margin: 0 0 0.5rem;
+				padding: 0.5rem 0.75rem;
+			}
+			legend {
+				padding: 0 0.3rem;
+				color: #333;
+			}
+			label {
+				display: inline-block;
+				width: 8.5rem;
+			}
+			input, select {
+				font: inherit;
+				padding: 0.15rem 0.3rem;
+				margin: 0.1rem 0;
+			}
+			button {
+				font: inherit;
+				margin: 0.2rem 0.2rem 0.2rem 0;
+				padding: 0.2rem 0.55rem;
+				cursor: pointer;
+			}
+			.row {
+				display: flex;
+				gap: 1rem;
+				margin-top: 0.5rem;
+				align-items: flex-start;
+			}
+			.col-session {
+				flex: 0 0 25%;
+				min-width: 0;
+			}
+			.col-log {
+				flex: 1 1 auto;
+				min-width: 0;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 0.5rem;
+				margin: 0;
+				max-height: 22vh;
+				overflow: auto;
+				white-space: pre-wrap;
+				border: 1px solid #ddd;
+			}
+			#session {
+				background: #eef;
+			}
+			#log {
+				background: #fafafa;
+				border: 1px solid #ddd;
+				padding: 0.25rem 0.5rem;
+				height: 40vh;
+				overflow: auto;
+			}
+			#log > div {
+				white-space: pre-wrap;
+				word-break: break-word;
+				border-top: 1px dotted #ccc;
+				padding: 0.15rem 0;
+			}
+			#log > div:first-child {
+				border-top: 0;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>@marianmeres/ownsuite — account lifecycle reference</h1>
+		<p>
+			Point at a compatible <code>@marianmeres/stack-account</code> server, click <b
+			>initialize</b>, exercise every verb. Server URL persists in
+			<code>localStorage</code>. Nothing fancy by design.
+		</p>
 
-<fieldset>
-	<legend>server</legend>
-	<label for="serverUrl">base url</label>
-	<input id="serverUrl" size="48" placeholder="http://localhost:8000/api/account">
-	<button id="initialize">initialize</button>
-</fieldset>
+		<fieldset>
+			<legend>server</legend>
+			<label for="serverUrl">base url</label>
+			<input
+				id="serverUrl"
+				size="48"
+				placeholder="http://localhost:8000/api/account"
+			>
+			<button id="initialize">initialize</button>
+		</fieldset>
 
-<fieldset>
-	<legend>credentials</legend>
-	<label for="email">email</label><input id="email" size="32"><br>
-	<label for="password">password</label><input id="password" type="password" size="32"><br>
-	<label for="newPassword">new password</label><input id="newPassword" type="password" size="32"><br>
-	<label for="provider">oauth provider</label>
-	<select id="provider">
-		<option value="google">google</option>
-		<option value="facebook">facebook</option>
-		<option value="apple">apple</option>
-		<option value="twitter">twitter</option>
-	</select><br>
-	<label for="remember">remember me</label>
-	<input id="remember" type="checkbox">
-	<small style="color:#555">
-		checked → localStorage, unchecked → sessionStorage
-		(see DevTools → Application → Storage)
-	</small>
-</fieldset>
+		<fieldset>
+			<legend>credentials</legend>
+			<label for="email">email</label><input id="email" size="32"><br>
+			<label for="password">password</label><input
+				id="password"
+				type="password"
+				size="32"
+			><br>
+			<label for="newPassword">new password</label><input
+				id="newPassword"
+				type="password"
+				size="32"
+			><br>
+			<label for="provider">oauth provider</label>
+			<select id="provider">
+				<option value="google">google</option>
+				<option value="facebook">facebook</option>
+				<option value="apple">apple</option>
+				<option value="twitter">twitter</option>
+			</select><br>
+			<label for="remember">remember me</label>
+			<input id="remember" type="checkbox">
+			<small style="color: #555">
+				checked → localStorage, unchecked → sessionStorage (see DevTools →
+				Application → Storage)
+			</small>
+		</fieldset>
 
-<fieldset>
-	<legend>auth</legend>
-	<button id="register">register</button>
-	<button id="login">login</button>
-	<button id="logout">logout</button>
-	<button id="resendVerify">resend verification</button>
-	<button id="requestReset">request password reset</button>
-	<button id="changePassword">change password</button>
-	<button id="deleteAccount">delete account</button>
-</fieldset>
+		<fieldset>
+			<legend>auth</legend>
+			<button id="register">register</button>
+			<button id="login">login</button>
+			<button id="logout">logout</button>
+			<button id="resendVerify">resend verification</button>
+			<button id="requestReset">request password reset</button>
+			<button id="changePassword">change password</button>
+			<button id="deleteAccount">delete account</button>
+		</fieldset>
 
-<fieldset>
-	<legend>profile</legend>
-	<button id="fetchProfile">fetch /me</button>
-	<button id="updateProfile">update email</button>
-	<button id="listOAuth">list oauth connections</button>
-	<button id="unlinkOAuth">unlink selected provider</button>
-</fieldset>
+		<fieldset>
+			<legend>profile</legend>
+			<button id="fetchProfile">fetch /me</button>
+			<button id="updateProfile">update email</button>
+			<button id="listOAuth">list oauth connections</button>
+			<button id="unlinkOAuth">unlink selected provider</button>
+		</fieldset>
 
-<fieldset>
-	<legend>oauth</legend>
-	<button id="oauthLogin">oauth login (popup)</button>
-	<button id="oauthLink">oauth link (popup)</button>
-</fieldset>
+		<fieldset>
+			<legend>oauth</legend>
+			<button id="oauthLogin">oauth login (popup)</button>
+			<button id="oauthLink">oauth link (popup)</button>
+		</fieldset>
 
-<div class="row">
-	<div class="col-session">
-		<h2>session</h2>
-		<pre id="session">—</pre>
-	</div>
-	<div class="col-log">
-		<h2>log</h2>
-		<div id="log"></div>
-	</div>
-</div>
+		<div class="row">
+			<div class="col-session">
+				<h2>session</h2>
+				<pre id="session">—</pre>
+			</div>
+			<div class="col-log">
+				<h2>log</h2>
+				<div id="log"></div>
+			</div>
+		</div>
 
-<script type="module" src="./dist/app.js"></script>
-</body>
+		<script type="module" src="./dist/app.js"></script>
+	</body>
 </html>

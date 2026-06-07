@@ -97,9 +97,7 @@ async function requestJson<T>(
 		headers: {
 			...(init.headers ?? {}),
 			...authHeaders(ctx),
-			...(init.body
-				? { "Content-Type": "application/json" }
-				: {}),
+			...(init.body ? { "Content-Type": "application/json" } : {}),
 		},
 		signal: ctx.signal,
 	});

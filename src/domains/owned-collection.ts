@@ -187,7 +187,10 @@ export class OwnedCollectionManager<
 				async () => {
 					const ctrl = this.newController();
 					try {
-						const res = await this.adapter!.create(data, this.#ctx(ctrl.signal));
+						const res = await this.adapter!.create(
+							data,
+							this.#ctx(ctrl.signal),
+						);
 						return res.data;
 					} finally {
 						this.releaseController(ctrl);
@@ -270,7 +273,10 @@ export class OwnedCollectionManager<
 						(r) => this.#getRowId(r) === id,
 					);
 					if (liveIdx !== -1) {
-						const rows = live.rows.map((r, i) => (i === liveIdx ? serverRow : r));
+						const rows = live.rows.map((
+							r,
+							i,
+						) => (i === liveIdx ? serverRow : r));
 						this.setData({ rows, meta: live.meta });
 					}
 					// If liveIdx === -1 the row is not in the current list; do NOT

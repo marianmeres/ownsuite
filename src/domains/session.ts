@@ -66,7 +66,7 @@ export function resolveSessionStorage(
 	const backend: "localStorage" | "sessionStorage" = type === "session"
 		? "sessionStorage"
 		: "localStorage";
-	const g = (globalThis as unknown as Record<string, Storage | undefined>);
+	const g = globalThis as unknown as Record<string, Storage | undefined>;
 	const store = g[backend];
 	if (!store) return createMemorySessionStorage();
 	return {
@@ -181,9 +181,7 @@ export class SessionManager {
 				// present-but-non-finite value (e.g. an ISO string laundered
 				// through a buggy adapter) is treated as expired and wiped,
 				// rather than yielding `NaN <= now === false` → immortal session.
-				const exp = typeof parsed.expiresAt === "number"
-					? parsed.expiresAt
-					: NaN;
+				const exp = typeof parsed.expiresAt === "number" ? parsed.expiresAt : NaN;
 				if (!Number.isFinite(exp) || exp * 1000 <= Date.now()) {
 					storage.del(this.#storageKey);
 					return null;

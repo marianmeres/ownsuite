@@ -108,7 +108,7 @@ export function openOAuthPopup(
 	url: string,
 	options: OpenOAuthPopupOptions = {},
 ): Promise<OAuthPopupMessage> {
-	const host = (options.host ?? (globalThis as unknown as PopupWindowHost));
+	const host = options.host ?? (globalThis as unknown as PopupWindowHost);
 	if (typeof host.open !== "function" || typeof host.addEventListener !== "function") {
 		return Promise.reject(
 			new Error("openOAuthPopup: host window does not support popups"),

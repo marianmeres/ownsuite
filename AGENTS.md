@@ -22,6 +22,7 @@ Client-side helper library for **owner-scoped** UIs. Generic domain managers for
 **Also (opt-in)** provides the blessed account-lifecycle surface for apps built on `@marianmeres/stack-account`: `suite.auth` (register / login / logout / OAuth init / password reset / delete account), `suite.profile` (`/me` CRUD + OAuth link list), `suite.session` (reactive JWT + subject, pluggable storage). Pass an `AuthAdapter` to `createOwnsuite({ adapters: { auth } })` to attach them.
 
 Pairs with:
+
 - **`@marianmeres/collection`** — `ownerIdScope` route hook (read-side owner enforcement).
 - **`@marianmeres/stack-common`** — `ownsuiteOptions()` server helper for mounting `/me/*` routes.
 - **`@marianmeres/stack-account`** — default adapters (`createStackAccountAuthAdapter`, `createStackAccountProfileAdapter`) target its REST surface.
@@ -101,9 +102,11 @@ tests/
 
 ```typescript
 // Main
-export { Ownsuite, createOwnsuite } from "./ownsuite.ts";
+export { createOwnsuite, Ownsuite } from "./ownsuite.ts";
 export type {
-	OwnsuiteConfig, OwnsuiteDomainConfig, SetContextOptions,
+	OwnsuiteConfig,
+	OwnsuiteDomainConfig,
+	SetContextOptions,
 } from "./ownsuite.ts";
 
 // Domain managers
@@ -112,13 +115,25 @@ export type { BaseDomainOptions, OwnedCollectionManagerOptions } from "./domains
 
 // Types
 export type {
-	DomainError, DomainState, DomainStateWrapper,
-	OwnsuiteContext, OwnedCollectionState,
-	OwnsuiteEvent, OwnsuiteEventType, DomainName,
-	StateChangedEvent, ErrorEvent, SyncedEvent,
-	ListFetchedEvent, RowFetchedEvent,
-	RowCreatedEvent, RowUpdatedEvent, RowDeletedEvent,
-	OwnedCollectionAdapter, OwnedListResult, OwnedRowResult,
+	DomainError,
+	DomainName,
+	DomainState,
+	DomainStateWrapper,
+	ErrorEvent,
+	ListFetchedEvent,
+	OwnedCollectionAdapter,
+	OwnedCollectionState,
+	OwnedListResult,
+	OwnedRowResult,
+	OwnsuiteContext,
+	OwnsuiteEvent,
+	OwnsuiteEventType,
+	RowCreatedEvent,
+	RowDeletedEvent,
+	RowFetchedEvent,
+	RowUpdatedEvent,
+	StateChangedEvent,
+	SyncedEvent,
 } from "./types/mod.ts";
 
 // Mock adapter (for tests)
@@ -126,19 +141,32 @@ export { createMockOwnedCollectionAdapter } from "./adapters/mod.ts";
 export type { MockAdapterOptions } from "./adapters/mod.ts";
 
 // Account lifecycle (optional — attached when adapters.auth is supplied)
-export { SessionManager, AuthManager, ProfileManager } from "./domains/mod.ts";
+export { AuthManager, ProfileManager, SessionManager } from "./domains/mod.ts";
 export type {
-	AuthAdapter, ProfileAdapter, AuthTokenResult, ProfileResult,
-	SessionState, SessionSubject, SessionStatus,
-	SessionStorage, SessionStorageType,
-	OAuthConnection, OAuthProvider, OAuthInitOptions, OAuthAction,
+	AuthAdapter,
+	AuthTokenResult,
+	OAuthAction,
+	OAuthConnection,
+	OAuthInitOptions,
+	OAuthProvider,
+	ProfileAdapter,
+	ProfileResult,
+	SessionState,
+	SessionStatus,
+	SessionStorage,
+	SessionStorageType,
+	SessionSubject,
 } from "./types/mod.ts";
 
 // OAuth popup helper
 export { openOAuthPopup } from "./oauth/popup.ts";
 export type {
-	OAuthPopupMessage, OAuthPopupLoginMessage, OAuthPopupLinkMessage,
-	OpenOAuthPopupOptions, PopupWindowHost, PopupWindowHandle,
+	OAuthPopupLinkMessage,
+	OAuthPopupLoginMessage,
+	OAuthPopupMessage,
+	OpenOAuthPopupOptions,
+	PopupWindowHandle,
+	PopupWindowHost,
 } from "./oauth/popup.ts";
 
 // Default stack-account adapters
@@ -150,8 +178,10 @@ export type { StackAccountAdapterOptions } from "./adapters/mod.ts";
 
 // Mock auth adapter (for tests)
 export {
-	createMockAuthAdapter, createMockProfileAdapter,
-	createMockAuthStore, verifyMockAccount,
+	createMockAuthAdapter,
+	createMockAuthStore,
+	createMockProfileAdapter,
+	verifyMockAccount,
 } from "./adapters/mod.ts";
 export type { MockAccount, MockAuthStore } from "./adapters/mod.ts";
 
@@ -211,7 +241,7 @@ Triggered by `initialize()`, `refresh()`, `create()`, `update()`, `delete()` on 
 
 4. **`initialize()` never rejects.** Per-domain errors land in that domain's `error` state; the top-level promise resolves. Use `suite.hasErrors()` / `suite.errors()` to detect failed boots, or subscribe to `domain:error`.
 
-5. **Optimistic updates roll back per-row on failure.** `update` mutates the single target row; on error that row reverts to its pre-call value. `delete` removes the target row; on error it is re-inserted at its original position (unless another op has since re-added it). `create` does NOT optimistically insert. Rollback reads the *live* store so an interleaved `refresh()` that brought new rows is preserved.
+5. **Optimistic updates roll back per-row on failure.** `update` mutates the single target row; on error that row reverts to its pre-call value. `delete` removes the target row; on error it is re-inserted at its original position (unless another op has since re-added it). `create` does NOT optimistically insert. Rollback reads the _live_ store so an interleaved `refresh()` that brought new rows is preserved.
 
 6. **`OwnsuiteContext.subjectId` is a hint, not authorization.** The server is authoritative. Setting it client-side has no security effect. When subject changes, call `suite.setContext(ctx, { replace: true, refresh: true })` to clear stale per-subject caches.
 
@@ -259,7 +289,7 @@ suite.domain("orders").subscribe((s) => {
 
 ```typescript
 suite.on("own:row:created", (e) => {/* e.rowId, e.domain, e.timestamp */});
-suite.on("domain:error",     (e) => {/* e.error */});
+suite.on("domain:error", (e) => {/* e.error */});
 suite.onAny(({ event, data }) => {/* wildcard envelope */});
 ```
 
@@ -295,7 +325,11 @@ import { HTTP_ERROR } from "@marianmeres/http-utils";
 const adapter: OwnedCollectionAdapter = {
 	async list(ctx, query) {
 		const url = new URL(`/api/shop/me/col/order/mod`, location.origin);
-		if (query) for (const [k, v] of Object.entries(query)) url.searchParams.set(k, String(v));
+		if (query) {
+			for (const [k, v] of Object.entries(query)) {
+				url.searchParams.set(k, String(v));
+			}
+		}
 		const res = await fetch(url, { signal: ctx.signal }); // forward abort
 		if (!res.ok) throw new HTTP_ERROR.BadRequest(await res.text());
 		return await res.json(); // { data, meta }
@@ -309,10 +343,7 @@ Joy ships a reusable factory at `src/admin/packages/joy/src/routes/me/owned-coll
 ### Testing with the mock adapter
 
 ```typescript
-import {
-	createMockOwnedCollectionAdapter,
-	createOwnsuite,
-} from "@marianmeres/ownsuite";
+import { createMockOwnedCollectionAdapter, createOwnsuite } from "@marianmeres/ownsuite";
 
 const adapter = createMockOwnedCollectionAdapter({
 	seed: [{ model_id: "1", data: { label: "a" } }],
@@ -373,6 +404,7 @@ deno task test:watch # watch mode
 ```
 
 Coverage by file:
+
 - `tests/ownsuite.test.ts` — core suite + `OwnedCollectionManager` CRUD, events, rollback.
 - `tests/concurrency.test.ts` — critical invariants: concurrent mutations, abort-supersede, `getOne` not setting error, phantom-row prevention, destroy semantics, `errors()`/`hasErrors()` helpers.
 - `tests/auth.test.ts` — `AuthManager` / `ProfileManager` / `SessionManager`: register / login / logout / unverified gate / OAuth login (popup + redirect) / OAuth unlink / profile update patching session / deleteAccount / identity-change hook propagation.
@@ -400,6 +432,7 @@ The client-side scope assumes the server enforces owner-based filtering. This re
 3. **Auth middleware**: must populate `ctx.locals.subject` (typically via `@marianmeres/stack-common`'s `createJwtMiddleware`) before the collection routes handle the request.
 
 URL shape the default adapter helper expects:
+
 ```
 List   GET    {apiRoot}/{stack}/me/col/{entity}/mod
 Get    GET    {apiRoot}/{stack}/me/col/{entity}/mod/{id}
@@ -411,6 +444,7 @@ Delete DELETE {apiRoot}/{stack}/me/col/{entity}/mod/{id}
 ### Joy admin SPA pairing
 
 Joy ships:
+
 - `src/admin/packages/joy/src/components/layout/LayoutCustomer.svelte` — simplified chrome for `/me/*`.
 - `src/admin/packages/joy/src/routes/me/MeRouter.svelte` — route entry point.
 - `src/admin/packages/joy/src/routes/me/owned-collection-adapter.ts` — reusable adapter factory.
@@ -471,14 +505,14 @@ described in the "Account lifecycle (optional)" section above.
 
 ## Differences from `@marianmeres/ecsuite`
 
-| Aspect | ecsuite | ownsuite |
-|--------|---------|----------|
-| Domains | Fixed 6 (cart, wishlist, order, customer, payment, product) | Arbitrary, registered by name |
-| State shape | Domain-specific (cart items, orders list, etc.) | Generic `{ rows, meta }` per domain |
-| Persistence | localStorage for cart/wishlist | None (server is source of truth) |
-| Scoping | Customer-id hint in context | Server-enforced via `owner_id` |
-| Optimistic create | Yes (cart items) | No (no client-assigned id) |
-| Optimistic update/delete | Yes | Yes |
-| Event namespaces | `cart:*`, `order:*`, etc. | `own:list:*`, `own:row:*` |
+| Aspect                   | ecsuite                                                     | ownsuite                            |
+| ------------------------ | ----------------------------------------------------------- | ----------------------------------- |
+| Domains                  | Fixed 6 (cart, wishlist, order, customer, payment, product) | Arbitrary, registered by name       |
+| State shape              | Domain-specific (cart items, orders list, etc.)             | Generic `{ rows, meta }` per domain |
+| Persistence              | localStorage for cart/wishlist                              | None (server is source of truth)    |
+| Scoping                  | Customer-id hint in context                                 | Server-enforced via `owner_id`      |
+| Optimistic create        | Yes (cart items)                                            | No (no client-assigned id)          |
+| Optimistic update/delete | Yes                                                         | Yes                                 |
+| Event namespaces         | `cart:*`, `order:*`, etc.                                   | `own:list:*`, `own:row:*`           |
 
 Consumers that already use ecsuite can compose both suites in the same app.

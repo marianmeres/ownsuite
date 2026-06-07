@@ -21,11 +21,7 @@ import {
 import type { DomainError, OwnsuiteContext } from "./types/state.ts";
 import type { OwnedCollectionAdapter } from "./types/adapter.ts";
 import type { OwnsuiteEventType } from "./types/events.ts";
-import type {
-	AuthAdapter,
-	ProfileAdapter,
-	SessionStorageType,
-} from "./types/auth.ts";
+import type { AuthAdapter, ProfileAdapter, SessionStorageType } from "./types/auth.ts";
 import { OwnedCollectionManager } from "./domains/owned-collection.ts";
 import { AuthManager } from "./domains/auth.ts";
 import { ProfileManager } from "./domains/profile.ts";
@@ -146,8 +142,7 @@ export class Ownsuite {
 			// AuthManager will still call it inside a try/catch and recover.
 			const profileForAuth = this.profile ?? new ProfileManager({
 				adapter: {
-					get: () =>
-						Promise.reject(new Error("no profile adapter configured")),
+					get: () => Promise.reject(new Error("no profile adapter configured")),
 					update: () =>
 						Promise.reject(new Error("no profile adapter configured")),
 					listOAuth: () => Promise.resolve([]),
@@ -291,9 +286,7 @@ export class Ownsuite {
 	 */
 	setContext(ctx: OwnsuiteContext, options: SetContextOptions = {}): void {
 		if (this.#destroyed) return;
-		this.#context = options.replace
-			? { ...ctx }
-			: { ...this.#context, ...ctx };
+		this.#context = options.replace ? { ...ctx } : { ...this.#context, ...ctx };
 		for (const m of this.#domains.values()) {
 			if (options.replace) m.replaceContext(this.#context);
 			else m.setContext(this.#context);

@@ -29,44 +29,44 @@ Pass an `AuthAdapter` to `createOwnsuite` to attach the account-lifecycle manage
 
 ```typescript
 import {
-  createOwnsuite,
-  createStackAccountAuthAdapter,
-  createStackAccountProfileAdapter,
+	createOwnsuite,
+	createStackAccountAuthAdapter,
+	createStackAccountProfileAdapter,
 } from "@marianmeres/ownsuite";
 
 const suite = createOwnsuite({
-  adapters: {
-    auth: createStackAccountAuthAdapter({ baseUrl: "/api/account" }),
-    profile: createStackAccountProfileAdapter({ baseUrl: "/api/account" }),
-  },
-  session: { storage: "local", storageKey: "myapp:session" },
-  // Existing owner-scoped domains continue to work — their ctx.jwt is
-  // populated automatically from the session and they re-initialize on
-  // every login / logout.
-  domains: {
-    orders: { adapter: ordersAdapter },
-  },
+	adapters: {
+		auth: createStackAccountAuthAdapter({ baseUrl: "/api/account" }),
+		profile: createStackAccountProfileAdapter({ baseUrl: "/api/account" }),
+	},
+	session: { storage: "local", storageKey: "myapp:session" },
+	// Existing owner-scoped domains continue to work — their ctx.jwt is
+	// populated automatically from the session and they re-initialize on
+	// every login / logout.
+	domains: {
+		orders: { adapter: ordersAdapter },
+	},
 });
 
 // Observable session — UI subscribes to this for logged-in state.
 suite.session!.subscribe(({ status, subject }) => {
-  if (status === "authenticated") console.log("hi", subject!.email);
-  if (status === "unverified")   console.log("check your inbox");
-  if (status === "anonymous")    console.log("signed out");
+	if (status === "authenticated") console.log("hi", subject!.email);
+	if (status === "unverified") console.log("check your inbox");
+	if (status === "anonymous") console.log("signed out");
 });
 
 // Register → server requires email verification by default
 await suite.auth!.register({
-  email: "alice@example.com",
-  password: "mysecretpassword",
-  password_confirm: "mysecretpassword",
+	email: "alice@example.com",
+	password: "mysecretpassword",
+	password_confirm: "mysecretpassword",
 });
 // suite.session!.get().status === "unverified"
 
 // After the user clicks the email link and the server flips isVerified:
 await suite.auth!.login(
-  { email: "alice@example.com", password: "mysecretpassword" },
-  { remember: true }, // true → localStorage; false → sessionStorage (per-login override)
+	{ email: "alice@example.com", password: "mysecretpassword" },
+	{ remember: true }, // true → localStorage; false → sessionStorage (per-login override)
 );
 // suite.session!.get().status === "authenticated"
 // Every registered owner-scoped domain is re-initialized with the new JWT.
@@ -77,8 +77,8 @@ await suite.auth!.initiateOAuth("google", { action: "login" });
 // Profile edit — changing email resets isVerified server-side and dispatches
 // a new verification email. Session subject is patched in place.
 await suite.profile!.update({
-  email: "renamed@example.com",
-  current_password: "mysecretpassword",
+	email: "renamed@example.com",
+	current_password: "mysecretpassword",
 });
 
 // Logout — revokes JWT server-side and clears local session storage.
@@ -157,14 +157,11 @@ Each domain holds a single list of rows owned by the authenticated subject. List
 ## Testing with the mock adapter
 
 ```typescript
-import {
-	createMockOwnedCollectionAdapter,
-	createOwnsuite,
-} from "@marianmeres/ownsuite";
+import { createMockOwnedCollectionAdapter, createOwnsuite } from "@marianmeres/ownsuite";
 
 const adapter = createMockOwnedCollectionAdapter({
 	seed: [{ model_id: "1", data: { label: "hello" } }],
-	failOn: { update: true },   // force update failures for rollback tests
+	failOn: { update: true }, // force update failures for rollback tests
 });
 
 const suite = createOwnsuite({ domains: { notes: { adapter } } });

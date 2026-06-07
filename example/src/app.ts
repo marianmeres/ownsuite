@@ -153,15 +153,16 @@ $("logout").addEventListener("click", () => {
 $("resendVerify").addEventListener("click", () => {
 	const s = requireSuite();
 	if (!s) return;
-	run("resendVerification", () =>
-		s.auth!.resendVerification({ email: emailEl.value }));
+	run("resendVerification", () => s.auth!.resendVerification({ email: emailEl.value }));
 });
 
 $("requestReset").addEventListener("click", () => {
 	const s = requireSuite();
 	if (!s) return;
-	run("requestPasswordReset", () =>
-		s.auth!.requestPasswordReset({ email: emailEl.value }));
+	run(
+		"requestPasswordReset",
+		() => s.auth!.requestPasswordReset({ email: emailEl.value }),
+	);
 });
 
 $("changePassword").addEventListener("click", () => {
@@ -181,8 +182,10 @@ $("deleteAccount").addEventListener("click", () => {
 	if (!globalThis.confirm("Really delete this account? This cannot be undone.")) {
 		return;
 	}
-	run("deleteAccount", () =>
-		s.auth!.deleteAccount({ password: passwordEl.value, confirm: true }));
+	run(
+		"deleteAccount",
+		() => s.auth!.deleteAccount({ password: passwordEl.value, confirm: true }),
+	);
 });
 
 $("fetchProfile").addEventListener("click", () => {
@@ -210,29 +213,37 @@ $("listOAuth").addEventListener("click", () => {
 $("unlinkOAuth").addEventListener("click", () => {
 	const s = requireSuite();
 	if (!s) return;
-	run("profile.unlinkOAuth", () =>
-		s.profile!.unlinkOAuth(providerEl.value as OAuthProvider));
+	run(
+		"profile.unlinkOAuth",
+		() => s.profile!.unlinkOAuth(providerEl.value as OAuthProvider),
+	);
 });
 
 $("oauthLogin").addEventListener("click", () => {
 	const s = requireSuite();
 	if (!s) return;
-	run("initiateOAuth:login", () =>
-		s.auth!.initiateOAuth(providerEl.value as OAuthProvider, {
-			action: "login",
-			mode: "popup",
-			remember: rememberEl.checked,
-		}));
+	run(
+		"initiateOAuth:login",
+		() =>
+			s.auth!.initiateOAuth(providerEl.value as OAuthProvider, {
+				action: "login",
+				mode: "popup",
+				remember: rememberEl.checked,
+			}),
+	);
 });
 
 $("oauthLink").addEventListener("click", () => {
 	const s = requireSuite();
 	if (!s) return;
-	run("initiateOAuth:link", () =>
-		s.auth!.initiateOAuth(providerEl.value as OAuthProvider, {
-			action: "link",
-			mode: "popup",
-		}));
+	run(
+		"initiateOAuth:link",
+		() =>
+			s.auth!.initiateOAuth(providerEl.value as OAuthProvider, {
+				action: "link",
+				mode: "popup",
+			}),
+	);
 });
 
 // ──────────────────────────── hydrate on load ──────────────────────────────

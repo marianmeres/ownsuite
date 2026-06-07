@@ -5,11 +5,7 @@
  */
 
 import type { DomainError, DomainState } from "./state.ts";
-import type {
-	OAuthConnection,
-	OAuthProvider,
-	SessionState,
-} from "./auth.ts";
+import type { OAuthConnection, OAuthProvider, SessionState } from "./auth.ts";
 
 /**
  * Domain identifier in ownsuite is an arbitrary string (the collection name

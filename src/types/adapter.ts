@@ -49,7 +49,10 @@ export interface OwnedRowResult<TRow> {
  */
 export interface OwnedCollectionAdapter<TRow, TCreate = unknown, TUpdate = unknown> {
 	/** List rows owned by the current subject. Query params are implementation-defined. */
-	list(ctx: OwnsuiteContext, query?: Record<string, unknown>): Promise<OwnedListResult<TRow>>;
+	list(
+		ctx: OwnsuiteContext,
+		query?: Record<string, unknown>,
+	): Promise<OwnedListResult<TRow>>;
 
 	/** Get one row by id (server returns 404 if not owned by subject). */
 	getOne(id: string, ctx: OwnsuiteContext): Promise<OwnedRowResult<TRow>>;
@@ -58,7 +61,11 @@ export interface OwnedCollectionAdapter<TRow, TCreate = unknown, TUpdate = unkno
 	create(data: TCreate, ctx: OwnsuiteContext): Promise<OwnedRowResult<TRow>>;
 
 	/** Update a row by id (owner_id is immutable server-side). */
-	update(id: string, data: TUpdate, ctx: OwnsuiteContext): Promise<OwnedRowResult<TRow>>;
+	update(
+		id: string,
+		data: TUpdate,
+		ctx: OwnsuiteContext,
+	): Promise<OwnedRowResult<TRow>>;
 
 	/** Delete a row by id (404 if not owned). */
 	delete(id: string, ctx: OwnsuiteContext): Promise<boolean>;

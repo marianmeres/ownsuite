@@ -20,9 +20,7 @@ import {
 	createMockProfileAdapter,
 	verifyMockAccount,
 } from "../src/adapters/mock-auth.ts";
-import {
-	createMockOwnedCollectionAdapter,
-} from "../src/adapters/mock.ts";
+import { createMockOwnedCollectionAdapter } from "../src/adapters/mock.ts";
 import { createOwnsuite } from "../src/ownsuite.ts";
 import { assertEquals, assertExists, assertRejects } from "@std/assert";
 
@@ -79,7 +77,13 @@ Deno.test("session - expired stored session is discarded", () => {
 		"ownsuite:session",
 		JSON.stringify({
 			status: "authenticated",
-			subject: { id: "u1", email: "x", roles: [], isVerified: true, hasPassword: true },
+			subject: {
+				id: "u1",
+				email: "x",
+				roles: [],
+				isVerified: true,
+				hasPassword: true,
+			},
 			jwt: "old-jwt",
 			expiresAt: Math.floor(Date.now() / 1000) - 10,
 		}),
@@ -104,7 +108,13 @@ Deno.test("session - future numeric expiresAt survives hydration", () => {
 		"ownsuite:session",
 		JSON.stringify({
 			status: "authenticated",
-			subject: { id: "u1", email: "x", roles: [], isVerified: true, hasPassword: true },
+			subject: {
+				id: "u1",
+				email: "x",
+				roles: [],
+				isVerified: true,
+				hasPassword: true,
+			},
 			jwt: "good-jwt",
 			expiresAt: future,
 		}),
@@ -131,7 +141,13 @@ Deno.test("session - string (non-finite) expiresAt is treated as expired and wip
 		"ownsuite:session",
 		JSON.stringify({
 			status: "authenticated",
-			subject: { id: "u1", email: "x", roles: [], isVerified: true, hasPassword: true },
+			subject: {
+				id: "u1",
+				email: "x",
+				roles: [],
+				isVerified: true,
+				hasPassword: true,
+			},
 			jwt: "stale-jwt",
 			expiresAt: "2020-01-01T00:00:00.000Z",
 		}),

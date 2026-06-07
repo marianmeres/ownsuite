@@ -7,11 +7,13 @@
 Convenience factory mirroring the ecsuite `createECSuite` convention. Equivalent to `new Ownsuite(config)`.
 
 **Parameters:**
+
 - `config` (`OwnsuiteConfig`, optional) — see [`OwnsuiteConfig`](#ownsuiteconfig).
 
 **Returns:** `Ownsuite`
 
 **Example:**
+
 ```typescript
 import { createOwnsuite } from "@marianmeres/ownsuite";
 
@@ -32,6 +34,7 @@ await suite.initialize();
 In-memory mock adapter for tests. Stores rows in a local `Map` keyed by `model_id`. Applies optional latency and can inject failures per operation — useful for exercising the optimistic-update rollback path deterministically.
 
 **Parameters:**
+
 - `options` (`MockAdapterOptions<TRow>`, optional)
   - `options.seed` (`TRow[]`, optional) — initial rows
   - `options.delayMs` (`number`, optional) — artificial latency per call. Default: `0`
@@ -44,6 +47,7 @@ In-memory mock adapter for tests. Stores rows in a local `Map` keyed by `model_i
 The returned adapter exposes an extra `_rows()` method for test assertions that doesn't exist on production adapters.
 
 **Example:**
+
 ```typescript
 const adapter = createMockOwnedCollectionAdapter({
 	seed: [{ model_id: "1", data: { label: "a" } }],
@@ -72,6 +76,7 @@ Readonly properties pointing at the account-lifecycle managers. Populated only w
 Register a new domain after construction. Throws if `name` is already registered.
 
 **Parameters:**
+
 - `name` (`string`) — unique domain label
 - `cfg` (`OwnsuiteDomainConfig<TRow, TCreate, TUpdate>`)
   - `cfg.adapter` (`OwnedCollectionAdapter`) — required
@@ -98,6 +103,7 @@ List registered domain names.
 Initialize all registered domains (or a subset). Runs in parallel. Individual domain errors land in that domain's error state and **do not** reject the returned promise.
 
 **Parameters:**
+
 - `names` (`string[]`, optional) — domain names to initialize. Default: all registered domains.
 
 **Returns:** `Promise<void>`
@@ -107,12 +113,14 @@ Initialize all registered domains (or a subset). Runs in parallel. Individual do
 Update the shared context and propagate to every registered domain manager.
 
 **Parameters:**
+
 - `ctx` (`OwnsuiteContext`)
 - `options` (`SetContextOptions`, optional)
   - `options.replace` (`boolean`, default `false`) — replace the context wholesale instead of merging. Use this when the subject changes and previous per-subject keys must not leak into adapter calls.
   - `options.refresh` (`boolean`, default `false`) — fire-and-forget `refresh()` on every domain after the context change. Recommended when `subjectId` changes so stale per-subject caches are cleared.
 
 **Example:**
+
 ```typescript
 // Subject change: drop old context + re-fetch every domain
 suite.setContext({ subjectId: newId }, { replace: true, refresh: true });
@@ -145,12 +153,14 @@ True after `destroy()` has been called.
 Subscribe to a specific event type.
 
 **Parameters:**
+
 - `type` (`OwnsuiteEventType`)
 - `subscriber` (`Subscriber`) — from `@marianmeres/pubsub`
 
 **Returns:** `Unsubscriber`
 
 **Example:**
+
 ```typescript
 const unsub = suite.on("own:row:created", (e) => {
 	console.log("created row", e.rowId, "in domain", e.domain);
@@ -178,6 +188,7 @@ Generic manager for a single owner-scoped collection domain. One instance per co
 Typically created via `Ownsuite.registerDomain()` — manual construction is possible but bypasses the shared pubsub.
 
 **Parameters:**
+
 - `domainName` (`string`) — label (informational, used in event payloads and logs)
 - `options` (`OwnedCollectionManagerOptions<TRow, TCreate, TUpdate>`, optional)
   - `options.adapter` (`OwnedCollectionAdapter`, optional)
@@ -204,6 +215,7 @@ Fetch the list from the server. Populates `data.rows` + `data.meta` and transiti
 Re-fetch the list. Same as `initialize` but re-entrant; accepts an adapter-specific query object.
 
 **Parameters:**
+
 - `query` (`Record<string, unknown>`, optional) — forwarded to `adapter.list(ctx, query)`
 
 #### `manager.getOne(id): Promise<TRow | null>`
@@ -217,6 +229,7 @@ Callers that need error detail should wrap this method and inspect the adapter e
 Create a new row. On success, prepends the server-returned row to the list. On failure, the list is unchanged and the manager transitions to `error`.
 
 **Parameters:**
+
 - `data` (`TCreate`) — creation payload. The server stamps `owner_id` — do not set it client-side.
 
 **Returns:** the server-returned row, or `null` on failure.
@@ -228,6 +241,7 @@ Update a row. Optimistically merges `data` into the existing row; on server fail
 If `id` is **not** in the current cached list (filtered out by an active query, or not loaded), the optimistic step is a no-op AND the successful server response is **not** inserted — call `refresh()` if you want the row to appear. The `own:row:updated` event is emitted regardless.
 
 **Parameters:**
+
 - `id` (`string`)
 - `data` (`TUpdate`)
 
@@ -289,8 +303,8 @@ interface OwnsuiteConfig {
 		profile?: ProfileAdapter;
 	};
 	session?: {
-		storage?: SessionStorageType;   // "local" | "session" | "memory" | SessionStorage
-		storageKey?: string;            // default: "ownsuite:session"
+		storage?: SessionStorageType; // "local" | "session" | "memory" | SessionStorage
+		storageKey?: string; // default: "ownsuite:session"
 	};
 }
 ```
@@ -315,8 +329,8 @@ interface OwnsuiteDomainConfig<TRow, TCreate, TUpdate> {
 
 ```typescript
 interface SetContextOptions {
-	replace?: boolean;   // default: false — merge into existing context
-	refresh?: boolean;   // default: false — fire refresh() on every domain
+	replace?: boolean; // default: false — merge into existing context
+	refresh?: boolean; // default: false — fire refresh() on every domain
 }
 ```
 
@@ -325,7 +339,7 @@ interface SetContextOptions {
 ```typescript
 interface OwnsuiteContext {
 	subjectId?: string;
-	signal?: AbortSignal;  // manager-injected, per-call
+	signal?: AbortSignal; // manager-injected, per-call
 	[key: string]: unknown;
 }
 ```
@@ -336,10 +350,17 @@ Context passed to adapters. **`subjectId` is a hint only** — the server author
 
 ```typescript
 interface OwnedCollectionAdapter<TRow, TCreate = unknown, TUpdate = unknown> {
-	list(ctx: OwnsuiteContext, query?: Record<string, unknown>): Promise<OwnedListResult<TRow>>;
+	list(
+		ctx: OwnsuiteContext,
+		query?: Record<string, unknown>,
+	): Promise<OwnedListResult<TRow>>;
 	getOne(id: string, ctx: OwnsuiteContext): Promise<OwnedRowResult<TRow>>;
 	create(data: TCreate, ctx: OwnsuiteContext): Promise<OwnedRowResult<TRow>>;
-	update(id: string, data: TUpdate, ctx: OwnsuiteContext): Promise<OwnedRowResult<TRow>>;
+	update(
+		id: string,
+		data: TUpdate,
+		ctx: OwnsuiteContext,
+	): Promise<OwnedRowResult<TRow>>;
 	delete(id: string, ctx: OwnsuiteContext): Promise<boolean>;
 }
 ```
@@ -373,7 +394,7 @@ interface OwnedCollectionState<TRow> {
 
 ```typescript
 interface DomainStateWrapper<T> {
-	state: DomainState;           // "initializing" | "ready" | "syncing" | "error"
+	state: DomainState; // "initializing" | "ready" | "syncing" | "error"
 	data: T | null;
 	error: DomainError | null;
 	lastSyncedAt: number | null;
@@ -399,9 +420,9 @@ error        → syncing    (retry)
 
 ```typescript
 interface DomainError {
-	code: string;             // e.g. "SYNC_FAILED", "FETCH_FAILED"
+	code: string; // e.g. "SYNC_FAILED", "FETCH_FAILED"
 	message: string;
-	operation: string;        // e.g. "create", "update", "delete"
+	operation: string; // e.g. "create", "update", "delete"
 	originalError?: unknown;
 }
 ```
@@ -438,11 +459,11 @@ type OwnsuiteEvent =
 	| StateChangedEvent
 	| ErrorEvent
 	| SyncedEvent
-	| ListFetchedEvent      // + count
-	| RowFetchedEvent       // + rowId
-	| RowCreatedEvent       // + rowId
-	| RowUpdatedEvent       // + rowId
-	| RowDeletedEvent;      // + rowId
+	| ListFetchedEvent // + count
+	| RowFetchedEvent // + rowId
+	| RowCreatedEvent // + rowId
+	| RowUpdatedEvent // + rowId
+	| RowDeletedEvent; // + rowId
 ```
 
 See [src/types/events.ts](src/types/events.ts) for individual event interfaces.
@@ -453,7 +474,13 @@ See [src/types/events.ts](src/types/events.ts) for individual event interfaces.
 interface MockAdapterOptions<TRow> {
 	seed?: TRow[];
 	delayMs?: number;
-	failOn?: { list?: boolean; getOne?: boolean; create?: boolean; update?: boolean; delete?: boolean };
+	failOn?: {
+		list?: boolean;
+		getOne?: boolean;
+		create?: boolean;
+		update?: boolean;
+		delete?: boolean;
+	};
 	getRowId?: (row: TRow) => string;
 	newId?: () => string;
 	/** Reject create payloads containing `model_id` (default: true). */
@@ -516,6 +543,7 @@ Attached automatically when `adapters.auth` is passed to `createOwnsuite`. See a
 Default `AuthAdapter` pointing at a conventional account REST surface (register / login / logout / OAuth / verify).
 
 **Parameters:**
+
 - `options` (`StackAccountAdapterOptions`, optional)
   - `options.baseUrl` (`string`, optional) — mount path. Default: `"/api/account"`.
   - `options.fetch` (`typeof fetch`, optional) — custom fetch (tests / SSR).
@@ -554,18 +582,19 @@ In-memory mock for tests and demos. `createMockAuthStore` builds a shared state 
 **`verifyMockAccount(store, email)`** marks an account as verified — stands in for the user clicking the link in a real verification email.
 
 **Example:**
+
 ```typescript
 const store = createMockAuthStore({ requireVerifiedEmail: true });
 const suite = createOwnsuite({
-    adapters: {
-        auth: createMockAuthAdapter(store),
-        profile: createMockProfileAdapter(store),
-    },
+	adapters: {
+		auth: createMockAuthAdapter(store),
+		profile: createMockProfileAdapter(store),
+	},
 });
 await suite.auth!.register({
-    email: "alice@example.com",
-    password: "mysecretpassword",
-    password_confirm: "mysecretpassword",
+	email: "alice@example.com",
+	password: "mysecretpassword",
+	password_confirm: "mysecretpassword",
 });
 // suite.session!.get().status === "unverified"
 verifyMockAccount(store, "alice@example.com");
@@ -611,17 +640,17 @@ Clear storage and in-memory state. Called by `suite.destroy()`.
 
 Verbs only. Attached as `suite.auth`. No state of its own — results flow into `SessionManager`.
 
-| Method | Purpose |
-|---|---|
-| `register({ email, password, password_confirm, roles?, extras? }, options?)` | Create account. Returns an `AuthTokenResult`. When the server's verification gate is on, the result carries `requiresVerification: true` and the session flips to `"unverified"` — no JWT yet. `options.remember` pins the resulting session to `localStorage` (`true`) or `sessionStorage` (`false`); omit to use the `SessionManager` default. |
-| `login({ email, password }, options?)` | Exchange credentials for a JWT. Session flips to `"authenticated"` on success, `"unverified"` if the server reports the gate. `options.remember` selects per-login storage (see `register`). |
-| `logout()` | Best-effort server revoke + local clear. Idempotent. |
-| `resendVerification({ email, lang? })` | Trigger a fresh verification email. Anti-enumeration: always resolves. |
-| `requestPasswordReset({ email, lang? })` | Trigger a password-reset email. Anti-enumeration. |
-| `changePassword({ current_password?, new_password, confirm_password, token? })` | Authenticated self-change (with `current_password`) or token-based reset. |
-| `deleteAccount({ password?, confirm? })` | Irreversible server delete + local session clear + identity-changed hook. |
-| `initiateOAuth(provider, opts)` | Start an OAuth flow. `mode: "popup"` (default) resolves with the auth result from the popup's `postMessage`; `mode: "redirect"` navigates the top window. `opts.remember` pins the resulting session's storage backend (only meaningful for `action: "login"`). |
-| `handleOAuthCallback(options?)` | For `mode: "redirect"` apps, call from your callback route to extract the result from the URL (delegated to `adapter.handleOAuthCallback`). `options.remember` pins the resulting session's storage — pass the same value the user picked before the redirect. |
+| Method                                                                          | Purpose                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `register({ email, password, password_confirm, roles?, extras? }, options?)`    | Create account. Returns an `AuthTokenResult`. When the server's verification gate is on, the result carries `requiresVerification: true` and the session flips to `"unverified"` — no JWT yet. `options.remember` pins the resulting session to `localStorage` (`true`) or `sessionStorage` (`false`); omit to use the `SessionManager` default. |
+| `login({ email, password }, options?)`                                          | Exchange credentials for a JWT. Session flips to `"authenticated"` on success, `"unverified"` if the server reports the gate. `options.remember` selects per-login storage (see `register`).                                                                                                                                                     |
+| `logout()`                                                                      | Best-effort server revoke + local clear. Idempotent.                                                                                                                                                                                                                                                                                             |
+| `resendVerification({ email, lang? })`                                          | Trigger a fresh verification email. Anti-enumeration: always resolves.                                                                                                                                                                                                                                                                           |
+| `requestPasswordReset({ email, lang? })`                                        | Trigger a password-reset email. Anti-enumeration.                                                                                                                                                                                                                                                                                                |
+| `changePassword({ current_password?, new_password, confirm_password, token? })` | Authenticated self-change (with `current_password`) or token-based reset.                                                                                                                                                                                                                                                                        |
+| `deleteAccount({ password?, confirm? })`                                        | Irreversible server delete + local session clear + identity-changed hook.                                                                                                                                                                                                                                                                        |
+| `initiateOAuth(provider, opts)`                                                 | Start an OAuth flow. `mode: "popup"` (default) resolves with the auth result from the popup's `postMessage`; `mode: "redirect"` navigates the top window. `opts.remember` pins the resulting session's storage backend (only meaningful for `action: "login"`).                                                                                  |
+| `handleOAuthCallback(options?)`                                                 | For `mode: "redirect"` apps, call from your callback route to extract the result from the URL (delegated to `adapter.handleOAuthCallback`). `options.remember` pins the resulting session's storage — pass the same value the user picked before the redirect.                                                                                   |
 
 Successful identity changes (register-with-autologin, login, OAuth login, logout, deleteAccount) fire the orchestrator's `onIdentityChanged` hook, which resets every owner-scoped domain and re-initializes them with the new context.
 
@@ -631,14 +660,14 @@ Successful identity changes (register-with-autologin, login, OAuth login, logout
 
 Singleton `/me` manager. Attached as `suite.profile`.
 
-| Method | Purpose |
-|---|---|
-| `fetch()` | GET `/me`. Aborts any in-flight fetch (supersede). Patches the session subject in place on success. |
-| `update({ email?, current_password? })` | PUT `/me`. Updates the session subject in place; emits `profile:updated`. |
-| `listOAuth()` | List the account's linked OAuth providers. |
-| `unlinkOAuth(provider)` | DELETE a provider connection; emits `oauth:unlinked`; re-fetches the profile. |
-| `get()` / `subscribe(fn)` | Read / subscribe to `ProfileState` (`{ profile, loading, error }`). |
-| `reset()` / `destroy()` | Abort in-flight fetch; drop state. |
+| Method                                  | Purpose                                                                                             |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `fetch()`                               | GET `/me`. Aborts any in-flight fetch (supersede). Patches the session subject in place on success. |
+| `update({ email?, current_password? })` | PUT `/me`. Updates the session subject in place; emits `profile:updated`.                           |
+| `listOAuth()`                           | List the account's linked OAuth providers.                                                          |
+| `unlinkOAuth(provider)`                 | DELETE a provider connection; emits `oauth:unlinked`; re-fetches the profile.                       |
+| `get()` / `subscribe(fn)`               | Read / subscribe to `ProfileState` (`{ profile, loading, error }`).                                 |
+| `reset()` / `destroy()`                 | Abort in-flight fetch; drop state.                                                                  |
 
 ---
 
@@ -647,6 +676,7 @@ Singleton `/me` manager. Attached as `suite.profile`.
 Open an OAuth popup and await the server's `postMessage`.
 
 **Parameters:**
+
 - `url` (`string`) — server OAuth init URL.
 - `options` (`OpenOAuthPopupOptions`, optional)
   - `options.host` (`PopupWindowHost`, optional) — shim for tests. Default: `globalThis`.
@@ -665,10 +695,10 @@ Open an OAuth popup and await the server's `postMessage`.
 
 ```typescript
 interface SessionState {
-    status: "anonymous" | "authenticated" | "unverified";
-    subject: SessionSubject | null;
-    jwt: string | null;
-    expiresAt: number | null;  // unix seconds
+	status: "anonymous" | "authenticated" | "unverified";
+	subject: SessionSubject | null;
+	jwt: string | null;
+	expiresAt: number | null; // unix seconds
 }
 ```
 
@@ -676,11 +706,11 @@ interface SessionState {
 
 ```typescript
 interface SessionSubject {
-    id: string;
-    email: string;
-    roles: string[];
-    isVerified: boolean;
-    hasPassword: boolean;   // OAuth-only accounts: false
+	id: string;
+	email: string;
+	roles: string[];
+	isVerified: boolean;
+	hasPassword: boolean; // OAuth-only accounts: false
 }
 ```
 
@@ -690,9 +720,9 @@ interface SessionSubject {
 type SessionStatus = "anonymous" | "authenticated" | "unverified";
 
 interface SessionStorage {
-    get(key: string): string | null;
-    set(key: string, value: string): void;
-    del(key: string): void;
+	get(key: string): string | null;
+	set(key: string, value: string): void;
+	del(key: string): void;
 }
 
 type SessionStorageType = "local" | "session" | "memory" | SessionStorage;
@@ -702,13 +732,13 @@ type SessionStorageType = "local" | "session" | "memory" | SessionStorage;
 
 ```typescript
 interface AuthTokenResult {
-    jwt?: string;                    // absent when requiresVerification is true
-    email: string;
-    roles: string[];
-    isVerified?: boolean;
-    validFrom?: number;
-    validUntil?: number;
-    requiresVerification?: boolean;  // server declined auto-login pending verify
+	jwt?: string; // absent when requiresVerification is true
+	email: string;
+	roles: string[];
+	isVerified?: boolean;
+	validFrom?: number;
+	validUntil?: number;
+	requiresVerification?: boolean; // server declined auto-login pending verify
 }
 ```
 
@@ -716,11 +746,11 @@ interface AuthTokenResult {
 
 ```typescript
 interface ProfileResult {
-    email: string;
-    roles: string[];
-    isVerified: boolean;
-    hasPassword: boolean;
-    oauthConnections: OAuthConnection[];
+	email: string;
+	roles: string[];
+	isVerified: boolean;
+	hasPassword: boolean;
+	oauthConnections: OAuthConnection[];
 }
 ```
 
@@ -731,25 +761,25 @@ type OAuthProvider = "google" | "facebook" | "apple" | "twitter";
 type OAuthAction = "login" | "link";
 
 interface OAuthInitOptions {
-    action: OAuthAction;
-    redirect?: string;
-    lang?: string;
-    mode?: "popup" | "redirect";  // default "popup"
-    remember?: boolean;           // same semantics as AuthActionOptions.remember
+	action: OAuthAction;
+	redirect?: string;
+	lang?: string;
+	mode?: "popup" | "redirect"; // default "popup"
+	remember?: boolean; // same semantics as AuthActionOptions.remember
 }
 
 interface AuthActionOptions {
-    /** true → localStorage; false → sessionStorage; undefined → default.
-     *  Ignored when SessionManager was constructed with a custom
-     *  SessionStorage object. */
-    remember?: boolean;
+	/** true → localStorage; false → sessionStorage; undefined → default.
+	 *  Ignored when SessionManager was constructed with a custom
+	 *  SessionStorage object. */
+	remember?: boolean;
 }
 
 interface OAuthConnection {
-    provider: OAuthProvider;
-    display_name?: string;
-    avatar_url?: string;
-    email?: string;
+	provider: OAuthProvider;
+	display_name?: string;
+	avatar_url?: string;
+	email?: string;
 }
 ```
 
@@ -757,15 +787,15 @@ interface OAuthConnection {
 
 ```typescript
 interface AuthAdapter {
-    register(input, ctx): Promise<AuthTokenResult>;
-    login(input, ctx): Promise<AuthTokenResult>;
-    logout(ctx): Promise<void>;
-    oauthInitUrl(provider, opts, ctx): string;
-    handleOAuthCallback?(ctx): Promise<AuthTokenResult>;
-    resendVerification(input, ctx): Promise<void>;
-    requestPasswordReset(input, ctx): Promise<void>;
-    changePassword(input, ctx): Promise<void>;
-    deleteAccount(input, ctx): Promise<{ deleted: true }>;
+	register(input, ctx): Promise<AuthTokenResult>;
+	login(input, ctx): Promise<AuthTokenResult>;
+	logout(ctx): Promise<void>;
+	oauthInitUrl(provider, opts, ctx): string;
+	handleOAuthCallback?(ctx): Promise<AuthTokenResult>;
+	resendVerification(input, ctx): Promise<void>;
+	requestPasswordReset(input, ctx): Promise<void>;
+	changePassword(input, ctx): Promise<void>;
+	deleteAccount(input, ctx): Promise<{ deleted: true }>;
 }
 ```
 
@@ -775,10 +805,10 @@ Parameter shapes match [`src/types/auth.ts`](src/types/auth.ts). Implementations
 
 ```typescript
 interface ProfileAdapter {
-    get(ctx): Promise<ProfileResult>;
-    update(input: { email?, current_password? }, ctx): Promise<ProfileResult>;
-    listOAuth(ctx): Promise<OAuthConnection[]>;
-    unlinkOAuth(provider, ctx): Promise<void>;
+	get(ctx): Promise<ProfileResult>;
+	update(input: { email?; current_password? }, ctx): Promise<ProfileResult>;
+	listOAuth(ctx): Promise<OAuthConnection[]>;
+	unlinkOAuth(provider, ctx): Promise<void>;
 }
 ```
 
@@ -786,8 +816,8 @@ interface ProfileAdapter {
 
 ```typescript
 interface StackAccountAdapterOptions {
-    baseUrl?: string;    // default "/api/account"
-    fetch?: typeof fetch;
+	baseUrl?: string; // default "/api/account"
+	fetch?: typeof fetch;
 }
 ```
 
@@ -799,18 +829,18 @@ See [src/oauth/popup.ts](src/oauth/popup.ts) for full definitions. `OAuthPopupMe
 
 ```typescript
 interface MockAccount {
-    email: string;
-    password: string;         // plaintext — mock does no hashing
-    roles: string[];
-    isVerified: boolean;
-    hasPassword: boolean;
-    oauthConnections: OAuthConnection[];
+	email: string;
+	password: string; // plaintext — mock does no hashing
+	roles: string[];
+	isVerified: boolean;
+	hasPassword: boolean;
+	oauthConnections: OAuthConnection[];
 }
 
 interface MockAuthStore {
-    accounts: Map<string, MockAccount>;
-    requireVerifiedEmail: boolean;
-    jwtsByEmail: Map<string, string>;
+	accounts: Map<string, MockAccount>;
+	requireVerifiedEmail: boolean;
+	jwtsByEmail: Map<string, string>;
 }
 ```
 
@@ -822,13 +852,13 @@ Fields are public by design so test code can peek at / mutate them directly.
 
 Emitted on the shared pubsub. Each payload has a `timestamp` (ms).
 
-| Event | Payload |
-|---|---|
-| `auth:register` | `{ email, requiresVerification }` |
-| `auth:login` | `{ email }` |
-| `auth:logout` | `{ subjectId? }` |
-| `auth:session:changed` | `{ session: SessionState }` |
+| Event                        | Payload                                                 |
+| ---------------------------- | ------------------------------------------------------- |
+| `auth:register`              | `{ email, requiresVerification }`                       |
+| `auth:login`                 | `{ email }`                                             |
+| `auth:logout`                | `{ subjectId? }`                                        |
+| `auth:session:changed`       | `{ session: SessionState }`                             |
 | `auth:verification:required` | `{ email }` (fired when status flips to `"unverified"`) |
-| `profile:updated` | `{ email }` |
-| `oauth:linked` | `{ connection: OAuthConnection }` |
-| `oauth:unlinked` | `{ provider: OAuthProvider }` |
+| `profile:updated`            | `{ email }`                                             |
+| `oauth:linked`               | `{ connection: OAuthConnection }`                       |
+| `oauth:unlinked`             | `{ provider: OAuthProvider }`                           |
