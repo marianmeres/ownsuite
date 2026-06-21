@@ -3,7 +3,7 @@
   "specifiers": {
     "jsr:@marianmeres/batch@^1.3.0": "1.3.0",
     "jsr:@marianmeres/clog@^3.21.0": "3.21.0",
-    "jsr:@marianmeres/collection-types@^1.41.0": "1.41.0",
+    "jsr:@marianmeres/collection-types@^2.2.0": "2.2.0",
     "jsr:@marianmeres/http-utils@^2.11.0": "2.11.0",
     "jsr:@marianmeres/npmbuild@^1.16.0": "1.16.0",
     "jsr:@marianmeres/pubsub@3": "3.0.0",
@@ -30,8 +30,8 @@
         "jsr:@marianmeres/batch"
       ]
     },
-    "@marianmeres/collection-types@1.41.0": {
-      "integrity": "1ea6a7a1adf6fd48d054f7c97de79f3fb68d9a298c3b6fd789c0cec6edeba51f"
+    "@marianmeres/collection-types@2.2.0": {
+      "integrity": "909324369d95c45f28a419588149dd1dfde052cd6e7675ba23d67a1fc133edb0"
     },
     "@marianmeres/http-utils@2.11.0": {
       "integrity": "89adc986b157f0b3eab6025823d0ad0830de49da84dea7fe99802bd33bbaaf8f"
@@ -82,7 +82,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@marianmeres/clog@^3.21.0",
-      "jsr:@marianmeres/collection-types@^1.41.0",
+      "jsr:@marianmeres/collection-types@^2.2.0",
       "jsr:@marianmeres/http-utils@^2.11.0",
       "jsr:@marianmeres/npmbuild@^1.16.0",
       "jsr:@marianmeres/pubsub@3",
