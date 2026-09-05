@@ -16,7 +16,7 @@
   },
   "imports": {
     "@marianmeres/clog": "jsr:@marianmeres/clog@^3.21.0",
-    "@marianmeres/collection-types": "jsr:@marianmeres/collection-types@^2.10.0",
+    "@marianmeres/collection-types": "jsr:@marianmeres/collection-types@^2.16.0",
     "@marianmeres/http-utils": "jsr:@marianmeres/http-utils@^2.11.0",
     "@marianmeres/npmbuild": "jsr:@marianmeres/npmbuild@^1.16.0",
     "@marianmeres/pubsub": "jsr:@marianmeres/pubsub@^3.0.0",
