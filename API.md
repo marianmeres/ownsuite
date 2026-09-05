@@ -757,7 +757,7 @@ interface ProfileResult {
 ### `OAuthProvider` / `OAuthAction` / `OAuthInitOptions` / `OAuthConnection`
 
 ```typescript
-type OAuthProvider = "google" | "facebook" | "apple" | "twitter";
+type OAuthProvider = "google" | "microsoft" | "facebook" | "apple" | "twitter";
 type OAuthAction = "login" | "link";
 
 interface OAuthInitOptions {

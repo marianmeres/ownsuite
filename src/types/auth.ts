@@ -85,8 +85,15 @@ export type SessionStorageType = "local" | "session" | "memory" | SessionStorage
 // ─────────────────────── OAuth connection shape ────────────────────────────
 
 /** Supported OAuth provider identifiers — the server side (`@marianmeres/
- *  stack-account`) decides which are actually enabled. */
-export type OAuthProvider = "google" | "facebook" | "apple" | "twitter";
+ *  stack-account`) decides which are actually enabled.
+ *
+ *  Mirrors `OAuthProvider` in `@marianmeres/collection-types` (same members,
+ *  same order); the two are kept in step by hand rather than re-exported, so
+ *  ownsuite's public surface does not pull that package's types into every
+ *  consumer's build. Widening this is additive — a value of the old union is
+ *  still a value of the new one — but an exhaustive `switch` over it in a
+ *  consumer will want a new arm. */
+export type OAuthProvider = "google" | "microsoft" | "facebook" | "apple" | "twitter";
 
 /** A single linked OAuth provider connection on the subject's account. */
 export interface OAuthConnection {
